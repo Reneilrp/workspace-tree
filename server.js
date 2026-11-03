@@ -1187,15 +1187,20 @@ async function getGitStatus(targetPath) {
         }
       }
 
+      const aheadBehind = (ahead === 0 && behind === 0) ? 'Up to date' : `Ahead ${ahead}, Behind ${behind}`;
       const res = {
         success: true,
         isGit: true,
         branch,
+        status: dirtyFiles.length === 0 ? 'Clean' : 'Modified',
         isClean: dirtyFiles.length === 0,
         dirtyCount: dirtyFiles.length,
+        uncommittedCount: dirtyFiles.length,
         ahead,
         behind,
-        dirtyFiles: dirtyFiles.slice(0, 8)
+        aheadBehind,
+        dirtyFiles: dirtyFiles.slice(0, 50),
+        files: dirtyFiles.map(d => ({ status: d.status, path: d.file }))
       };
       gitStatusCache.set(cacheKey, { timestamp: now, data: res });
       resolve(res);
@@ -1211,7 +1216,46 @@ async function getGitStatus(targetPath) {
 // ==========================================
 // 3. ACTIVE DEV SERVERS & PORT MONITOR
 // ==========================================
-async function getActiveListeningPorts() {
+async function getActiveListeningPorts(targetPath = null) {
+  const projectPorts = new Set();
+  if (targetPath) {
+    try {
+      const envFiles = [
+        path.join(targetPath, '.env'),
+        path.join(targetPath, '.env.local'),
+        path.join(targetPath, 'backend', '.env')
+      ];
+      for (const envF of envFiles) {
+        if (fs.existsSync(envF)) {
+          const content = fs.readFileSync(envF, 'utf8');
+          for (const line of content.split('\n')) {
+            const t = line.trim();
+            if (t.startsWith('#') || !t.includes('=')) continue;
+            const parts = t.split('=');
+            const k = parts[0].trim().toUpperCase();
+            const val = parts.slice(1).join('=').trim().replace(/^["']|["']$/g, '');
+            if (k.includes('PORT') || k.includes('URL')) {
+              const num = parseInt(val, 10);
+              if (num > 0 && num < 65536) {
+                projectPorts.add(num);
+              } else {
+                const urlMatch = val.match(/:(\d+)/);
+                if (urlMatch) {
+                  projectPorts.add(parseInt(urlMatch[1], 10));
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (fs.existsSync(path.join(targetPath, 'artisan')) || fs.existsSync(path.join(targetPath, 'backend', 'artisan'))) {
+        projectPorts.add(8000);
+        projectPorts.add(5173);
+      }
+    } catch {}
+  }
+
   return new Promise((resolve) => {
     exec('netstat -ano -p tcp', { windowsHide: true }, (err, stdout) => {
       const activePorts = [];
@@ -1222,23 +1266,39 @@ async function getActiveListeningPorts() {
           const parts = line.trim().split(/\s+/);
           if (parts.length >= 4) {
             const localAddr = parts[1];
-            const pid = parts[parts.length - 1];
+            const pidStr = parts[parts.length - 1];
+            const pid = parseInt(pidStr, 10) || null;
             const portMatch = localAddr.match(/:(\d+)$/);
             if (portMatch) {
               const port = parseInt(portMatch[1], 10);
-              const isDevPort = (port >= 3000 && port <= 3010) ||
+              // PROTECTED PORT 7337: Workspace Tree internal daemon
+              if (port === 7337) continue;
+
+              const isProj = projectPorts.has(port);
+              const isDevPort = isProj ||
+                                (port >= 3000 && port <= 3010) ||
                                 (port >= 5170 && port <= 5185) ||
                                 (port >= 8000 && port <= 8090) ||
                                 (port >= 19000 && port <= 19010) ||
-                                port === 4000 || port === 4200 || port === 7337;
+                                port === 4000 || port === 4200;
+
               if (isDevPort && !activePorts.some(p => p.port === port)) {
-                activePorts.push({ port, pid, address: localAddr });
+                activePorts.push({
+                  port,
+                  pid,
+                  address: localAddr,
+                  name: isProj ? `Port ${port} (Project)` : `Port ${port}`,
+                  protocol: 'TCP',
+                  isProjectPort: isProj,
+                  projectName: isProj && targetPath ? path.basename(targetPath) : null
+                });
               }
             }
           }
         }
       }
-      resolve({ success: true, ports: activePorts, internalServers: getActiveServersSummary() });
+      const projectPortCount = activePorts.filter(p => p.isProjectPort).length;
+      resolve({ success: true, ports: activePorts, projectPortCount, internalServers: getActiveServersSummary() });
     });
   });
 }
@@ -1247,6 +1307,14 @@ async function killPortProcess(targetPort, targetPid = null) {
   return new Promise((resolve) => {
     const portNum = parseInt(targetPort, 10);
     if (!portNum) return resolve({ success: false, error: 'Valid port required' });
+
+    // Protect Port 7337
+    if (portNum === 7337) {
+      return resolve({
+        success: false,
+        error: "Port 7337 is Workspace Tree's internal daemon port and is protected. To quit Workspace Tree, use Settings or exit the application."
+      });
+    }
 
     if (targetPid) {
       exec(`taskkill /F /PID ${targetPid} /T`, { windowsHide: true }, (err) => {
@@ -1728,7 +1796,8 @@ const server = http.createServer(async (req, res) => {
 
   // 3. Active Listening Dev Ports
   if (pathname === '/api/active-ports') {
-    const result = await getActiveListeningPorts();
+    const targetPath = url.searchParams.get('path');
+    const result = await getActiveListeningPorts(targetPath);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));
     return;

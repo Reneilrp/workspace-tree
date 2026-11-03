@@ -87,8 +87,9 @@ fn test_translate_path() {
 
 #[test]
 fn test_active_ports() {
-    let ports = system_tools::get_active_ports();
+    let ports = system_tools::get_active_ports(None);
     assert!(ports.success);
+    assert!(!ports.ports.iter().any(|p| p.port == 7337), "Port 7337 must be excluded from active dev ports list");
     println!("Active monitored ports detected: {}", ports.ports.len());
 }
 
@@ -154,4 +155,10 @@ fn test_monorepo_laravel_frontend_detection() {
 
     let _ = fs::remove_dir_all(&temp_dir);
     println!("test_monorepo_laravel_frontend_detection passed successfully!");
+}
+#[test]
+fn test_git_status_evac() {
+    let path = r"\\wsl.localhost\Ubuntu\home\pheinz\Evac_Route";
+    let status = system_tools::get_git_status(path);
+    println!("EVAC STATUS: {:?}", status);
 }

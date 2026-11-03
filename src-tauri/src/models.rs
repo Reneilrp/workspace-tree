@@ -132,6 +132,12 @@ pub struct TranslatePathResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitFileChange {
+    pub status: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStatusResponse {
     pub success: bool,
     #[serde(rename = "isGit")]
@@ -144,6 +150,8 @@ pub struct GitStatusResponse {
     pub ahead_behind: Option<String>,
     #[serde(rename = "uncommittedCount", skip_serializing_if = "Option::is_none")]
     pub uncommitted_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<GitFileChange>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,12 +160,18 @@ pub struct ActivePortItem {
     pub pid: Option<u32>,
     pub name: Option<String>,
     pub protocol: String,
+    #[serde(rename = "isProjectPort", skip_serializing_if = "Option::is_none")]
+    pub is_project_port: Option<bool>,
+    #[serde(rename = "projectName", skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivePortsResponse {
     pub success: bool,
     pub ports: Vec<ActivePortItem>,
+    #[serde(rename = "projectPortCount", skip_serializing_if = "Option::is_none")]
+    pub project_port_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

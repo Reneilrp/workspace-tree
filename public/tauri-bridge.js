@@ -67,7 +67,8 @@
         const path = params.get('path') || body.path;
         result = await invoke('translate_path', { path });
       } else if (pathname === '/api/active-ports') {
-        result = await invoke('get_active_ports');
+        const path = params.get('path');
+        result = await invoke('get_active_ports', { path });
       } else if (pathname === '/api/kill-port') {
         const port = parseInt(body.port, 10);
         result = await invoke('kill_port', { targetPort: port, targetPid: body.pid ? parseInt(body.pid, 10) : null });

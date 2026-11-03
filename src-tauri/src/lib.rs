@@ -85,8 +85,8 @@ fn get_git_status(path: String) -> GitStatusResponse {
 }
 
 #[tauri::command]
-fn get_active_ports() -> ActivePortsResponse {
-    system_tools::get_active_ports()
+fn get_active_ports(path: Option<String>) -> ActivePortsResponse {
+    system_tools::get_active_ports(path.as_deref())
 }
 
 #[tauri::command]

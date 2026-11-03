@@ -334,6 +334,11 @@ body.cockpit-body {
   color: var(--success-color);
 }
 
+.tab-badge.yellow {
+  background: #fef3c7;
+  color: #b45309;
+}
+
 /* Content Area */
 .cockpit-content {
   flex: 1;
@@ -581,6 +586,93 @@ body.cockpit-body {
   font-weight: 600;
   font-family: var(--font-mono);
   color: var(--text-main);
+}
+
+/* Ports Project Filter Segment */
+.ports-filter-group {
+  display: inline-flex;
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.filter-tab-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-tab-btn:hover {
+  color: var(--text-main);
+}
+
+.filter-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Git Changes Table */
+.git-changes-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.git-changes-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.git-changes-table-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.git-status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-align: center;
+  min-width: 24px;
+}
+
+.git-status-badge.modified {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.git-status-badge.untracked {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.git-status-badge.deleted {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.git-status-badge.added {
+  background: #dcfce7;
+  color: #15803d;
 }
 
 .hidden {

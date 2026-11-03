@@ -35,6 +35,7 @@
   const badgePorts = document.getElementById('badgePorts');
   const badgeEnv = document.getElementById('badgeEnv');
   const badgeLogs = document.getElementById('badgeLogs');
+  const badgeGit = document.getElementById('badgeGit');
 
   // Tables
   const portsTableBody = document.getElementById('portsTableBody');
@@ -43,6 +44,10 @@
   const btnRefreshEnv = document.getElementById('btnRefreshEnv');
   const btnCopyMissing = document.getElementById('btnCopyMissing');
   const btnRefreshGit = document.getElementById('btnRefreshGit');
+  const btnFilterProjectPorts = document.getElementById('btnFilterProjectPorts');
+  const btnFilterAllPorts = document.getElementById('btnFilterAllPorts');
+  const gitChangesCount = document.getElementById('gitChangesCount');
+  const gitChangesBody = document.getElementById('gitChangesBody');
 
   // Env stats
   const statEnvFile = document.getElementById('statEnvFile');
@@ -228,9 +233,12 @@
   }
 
   // 5. Ports Inspector
+  let portFilterMode = 'project';
+
   async function refreshPorts() {
     try {
-      const res = await fetch('/api/active-ports');
+      const q = currentPath ? `?path=${encodeURIComponent(currentPath)}` : '';
+      const res = await fetch(`/api/active-ports${q}`);
       const data = await res.json();
       activePortList = data.ports || [];
 
@@ -241,25 +249,40 @@
   }
 
   function renderPorts(ports) {
-    if (!ports || ports.length === 0) {
-      portsTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">No active dev listening ports found</td></tr>`;
+    // Determine project ports vs total dev ports
+    const projectPorts = ports.filter(p => p.isProjectPort);
+    const displayPorts = (portFilterMode === 'project') ? projectPorts : ports;
+
+    // Vitals and tab badge reflect project status when in project mode, or total
+    if (projectPorts.length > 0) {
+      vitalPortsText.textContent = `${projectPorts.length} Project Port(s)`;
+      vitalPorts.querySelector('.vital-dot').className = 'vital-dot yellow';
+      badgePorts.textContent = projectPorts.length;
+      badgePorts.classList.remove('hidden');
+    } else {
       vitalPortsText.textContent = 'All Clear';
       vitalPorts.querySelector('.vital-dot').className = 'vital-dot green';
       badgePorts.classList.add('hidden');
+    }
+
+    if (!displayPorts || displayPorts.length === 0) {
+      const emptyMsg = (portFilterMode === 'project')
+        ? `No active listening ports for this project.<br><span style="font-size:12px;color:var(--text-muted);font-weight:normal;">Switch to "🌐 All Dev Ports" or start the server.</span>`
+        : `No active dev listening ports found`;
+      portsTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">${emptyMsg}</td></tr>`;
       return;
     }
 
-    vitalPortsText.textContent = `${ports.length} Port(s) Busy`;
-    vitalPorts.querySelector('.vital-dot').className = 'vital-dot yellow';
-    badgePorts.textContent = ports.length;
-    badgePorts.classList.remove('hidden');
-
-    portsTableBody.innerHTML = ports.map(p => {
+    portsTableBody.innerHTML = displayPorts.map(p => {
       const pidStr = p.pid ? String(p.pid) : '—';
       const nameStr = p.name || `Port ${p.port}`;
+      const isProj = Boolean(p.isProjectPort);
+      const badgeHtml = isProj
+        ? `<span class="type-pill" style="background:#e0f2fe;color:#0369a1;margin-left:6px;font-size:10px;">Project</span>`
+        : '';
       return `
         <tr>
-          <td><strong>:${p.port}</strong></td>
+          <td><strong>:${p.port}</strong>${badgeHtml}</td>
           <td><span class="type-pill">${p.protocol || 'TCP'}</span></td>
           <td><code>${pidStr}</code></td>
           <td>${nameStr}</td>
@@ -274,7 +297,28 @@
     }).join('');
   }
 
+  if (btnFilterProjectPorts && btnFilterAllPorts) {
+    btnFilterProjectPorts.addEventListener('click', () => {
+      portFilterMode = 'project';
+      btnFilterProjectPorts.classList.add('active');
+      btnFilterAllPorts.classList.remove('active');
+      renderPorts(activePortList);
+    });
+
+    btnFilterAllPorts.addEventListener('click', () => {
+      portFilterMode = 'all';
+      btnFilterAllPorts.classList.add('active');
+      btnFilterProjectPorts.classList.remove('active');
+      renderPorts(activePortList);
+    });
+  }
+
   window.killPortItem = async function (port, pid) {
+    if (port === 7337) {
+      alert("Port 7337 is Workspace Tree's internal daemon port and is protected.\nTo quit Workspace Tree, use Settings or exit the application.");
+      return;
+    }
+
     try {
       const res = await fetch('/api/kill-port', {
         method: 'POST',
@@ -282,8 +326,12 @@
         body: JSON.stringify({ port, pid })
       });
       const data = await res.json();
-      appendLog(`[System] Terminated process on port :${port}`, 'system');
-      setTimeout(refreshPorts, 600);
+      if (data.success) {
+        appendLog(`[System] Terminated process on port :${port}`, 'system');
+        setTimeout(refreshPorts, 600);
+      } else {
+        alert(data.error || `Failed to kill process on port :${port}`);
+      }
     } catch (err) {
       alert('Failed to kill port process: ' + err.message);
     }
@@ -374,6 +422,16 @@
 
   btnRefreshEnv.addEventListener('click', refreshEnvDrift);
 
+  // Helper
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   // 7. Git Status
   async function refreshGitStatus() {
     if (!currentPath) return;
@@ -382,12 +440,23 @@
       const data = await res.json();
       if (data.success && data.isGit) {
         gitBranchName.textContent = data.branch || 'main';
-        gitWorkingStatus.textContent = data.status || 'Clean';
-        gitUncommitted.textContent = data.uncommittedCount ? `${data.uncommittedCount} uncommitted files` : 'Clean';
+        const count = data.uncommittedCount ?? data.dirtyCount ?? (data.files ? data.files.length : 0);
+        gitWorkingStatus.textContent = data.status || (count > 0 ? 'Modified' : 'Clean');
+        gitUncommitted.textContent = count > 0 ? `${count} uncommitted file(s)` : 'Clean';
         gitAheadBehind.textContent = data.aheadBehind || 'Up to date';
 
-        vitalGitText.textContent = data.branch || 'Git';
-        vitalGit.querySelector('.vital-dot').className = 'vital-dot green';
+        if (count > 0) {
+          badgeGit.textContent = count;
+          badgeGit.classList.remove('hidden');
+          vitalGitText.textContent = `${data.branch || 'Git'} (${count}*)`;
+          vitalGit.querySelector('.vital-dot').className = 'vital-dot yellow';
+        } else {
+          badgeGit.classList.add('hidden');
+          vitalGitText.textContent = data.branch || 'Git';
+          vitalGit.querySelector('.vital-dot').className = 'vital-dot green';
+        }
+
+        renderGitChanges(data.files || data.dirtyFiles || []);
       } else {
         gitBranchName.textContent = 'Not a git repo';
         gitWorkingStatus.textContent = '—';
@@ -395,8 +464,50 @@
         gitAheadBehind.textContent = '—';
         vitalGitText.textContent = 'None';
         vitalGit.querySelector('.vital-dot').className = 'vital-dot gray';
+        badgeGit.classList.add('hidden');
+        renderGitChanges([]);
       }
-    } catch {}
+    } catch {
+      renderGitChanges([]);
+    }
+  }
+
+  function renderGitChanges(files) {
+    if (!gitChangesBody) return;
+    if (gitChangesCount) {
+      gitChangesCount.textContent = files.length;
+    }
+    if (!files || files.length === 0) {
+      gitChangesBody.innerHTML = `<tr><td colspan="2" class="table-empty">No uncommitted changes detected. Working tree clean.</td></tr>`;
+      return;
+    }
+
+    gitChangesBody.innerHTML = files.map(f => {
+      const st = (f.status || 'M').trim();
+      let badgeClass = 'modified';
+      let label = 'M';
+      if (st.includes('?') || st === '??') {
+        badgeClass = 'untracked';
+        label = '??';
+      } else if (st.includes('D')) {
+        badgeClass = 'deleted';
+        label = 'D';
+      } else if (st.includes('A')) {
+        badgeClass = 'added';
+        label = 'A';
+      } else {
+        badgeClass = 'modified';
+        label = st || 'M';
+      }
+
+      const filePath = f.path || f.file || '';
+      return `
+        <tr>
+          <td><span class="git-status-badge ${badgeClass}" title="${label}">${label}</span></td>
+          <td><code>${escapeHtml(filePath)}</code></td>
+        </tr>
+      `;
+    }).join('');
   }
 
   btnRefreshGit.addEventListener('click', refreshGitStatus);

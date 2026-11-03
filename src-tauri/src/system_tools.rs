@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -8,7 +9,7 @@ use std::os::windows::process::CommandExt;
 use crate::fs_scanner::{is_wsl_path, to_linux_path};
 use crate::models::{
     ActionResponse, ActivePortItem, ActivePortsResponse, EnvDriftResponse, EnvKeyItem,
-    FileContentResponse, GitStatusResponse, StorageArtifact, StorageCleanResponse,
+    FileContentResponse, GitFileChange, GitStatusResponse, StorageArtifact, StorageCleanResponse,
     StorageFootprintResponse, TranslatePathResponse,
 };
 
@@ -157,6 +158,7 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
             status: None,
             ahead_behind: None,
             uncommitted_count: None,
+            files: Vec::new(),
         };
     }
 
@@ -188,6 +190,7 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
             let mut branch = "unknown".to_string();
             let mut uncommitted = 0;
             let mut ahead_behind = None;
+            let mut files = Vec::new();
 
             for line in stdout.lines() {
                 let trimmed = line.trim();
@@ -204,6 +207,15 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
                     }
                 } else if !trimmed.is_empty() {
                     uncommitted += 1;
+                    let (st_code, file_path) = if trimmed.len() >= 3 {
+                        (&trimmed[0..2], trimmed[3..].trim())
+                    } else {
+                        ("M", trimmed)
+                    };
+                    files.push(GitFileChange {
+                        status: st_code.trim().to_string(),
+                        path: file_path.to_string(),
+                    });
                 }
             }
 
@@ -214,6 +226,7 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
                 status: Some(if uncommitted == 0 { "Clean" } else { "Modified" }.to_string()),
                 ahead_behind,
                 uncommitted_count: Some(uncommitted),
+                files,
             }
         }
         _ => GitStatusResponse {
@@ -223,12 +236,43 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
             status: Some("Clean".to_string()),
             ahead_behind: None,
             uncommitted_count: Some(0),
+            files: Vec::new(),
         },
     }
 }
 
-pub fn get_active_ports() -> ActivePortsResponse {
+pub fn get_active_ports(target_path: Option<&str>) -> ActivePortsResponse {
     let mut ports = Vec::new();
+    let mut project_expected_ports = HashSet::new();
+
+    if let Some(tp) = target_path {
+        let p = Path::new(tp);
+        for env_file in &[p.join(".env"), p.join(".env.local"), p.join("backend").join(".env")] {
+            if let Ok(content) = fs::read_to_string(env_file) {
+                for line in content.lines() {
+                    let t = line.trim();
+                    if t.starts_with('#') || !t.contains('=') { continue; }
+                    let parts: Vec<&str> = t.splitn(2, '=').collect();
+                    let key = parts[0].trim().to_uppercase();
+                    let val = parts[1].trim().trim_matches('"').trim_matches('\'');
+                    if key.contains("PORT") || key.contains("URL") {
+                        if let Ok(num) = val.parse::<u16>() {
+                            project_expected_ports.insert(num);
+                        } else if let Some(pos) = val.rfind(':') {
+                            if let Ok(num) = val[pos + 1..].trim_end_matches('/').parse::<u16>() {
+                                project_expected_ports.insert(num);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if p.join("artisan").exists() || p.join("backend").join("artisan").exists() {
+            project_expected_ports.insert(8000);
+            project_expected_ports.insert(5173);
+        }
+    }
 
     #[cfg(target_os = "windows")]
     {
@@ -250,20 +294,32 @@ pub fn get_active_ports() -> ActivePortsResponse {
 
                     if let Some(pos) = local_addr.rfind(':') {
                         if let Ok(port) = local_addr[pos + 1..].parse::<u16>() {
-                            let is_dev_port = (3000..=3010).contains(&port)
+                            // PROTECTED PORT 7337 (Workspace Tree core server)
+                            if port == 7337 {
+                                continue;
+                            }
+
+                            let is_proj = project_expected_ports.contains(&port);
+                            let is_dev_port = is_proj
+                                || (3000..=3010).contains(&port)
                                 || (5170..=5185).contains(&port)
                                 || (8000..=8090).contains(&port)
                                 || (19000..=19010).contains(&port)
                                 || port == 4000
-                                || port == 4200
-                                || port == 7337;
+                                || port == 4200;
 
                             if is_dev_port && !ports.iter().any(|p: &ActivePortItem| p.port == port) {
                                 ports.push(ActivePortItem {
                                     port,
                                     pid,
-                                    name: Some(format!("Port {}", port)),
+                                    name: Some(if is_proj { format!("Port {} (Project)", port) } else { format!("Port {}", port) }),
                                     protocol: "TCP".to_string(),
+                                    is_project_port: Some(is_proj),
+                                    project_name: if is_proj {
+                                        target_path.and_then(|s| Path::new(s).file_name().map(|n| n.to_string_lossy().to_string()))
+                                    } else {
+                                        None
+                                    },
                                 });
                             }
                         }
@@ -286,12 +342,20 @@ pub fn get_active_ports() -> ActivePortsResponse {
                     let local_addr = parts[4];
                     if let Some(pos) = local_addr.rfind(':') {
                         if let Ok(port) = local_addr[pos + 1..].parse::<u16>() {
+                            if port == 7337 { continue; }
+                            let is_proj = project_expected_ports.contains(&port);
                             if !ports.iter().any(|p: &ActivePortItem| p.port == port) {
                                 ports.push(ActivePortItem {
                                     port,
                                     pid: None,
-                                    name: Some(format!("Port {}", port)),
+                                    name: Some(if is_proj { format!("Port {} (Project)", port) } else { format!("Port {}", port) }),
                                     protocol: "TCP".to_string(),
+                                    is_project_port: Some(is_proj),
+                                    project_name: if is_proj {
+                                        target_path.and_then(|s| Path::new(s).file_name().map(|n| n.to_string_lossy().to_string()))
+                                    } else {
+                                        None
+                                    },
                                 });
                             }
                         }
@@ -301,13 +365,23 @@ pub fn get_active_ports() -> ActivePortsResponse {
         }
     }
 
+    let project_port_count = ports.iter().filter(|p| p.is_project_port.unwrap_or(false)).count();
+
     ActivePortsResponse {
         success: true,
         ports,
+        project_port_count: Some(project_port_count),
     }
 }
 
 pub fn kill_port(target_port: u16, target_pid: Option<u32>) -> ActionResponse {
+    if target_port == 7337 {
+        return ActionResponse {
+            success: false,
+            message: None,
+            error: Some("Port 7337 is Workspace Tree's internal daemon port and is protected. To quit Workspace Tree, use Settings or exit the application.".to_string()),
+        };
+    }
     #[cfg(target_os = "windows")]
     {
         if let Some(pid) = target_pid {

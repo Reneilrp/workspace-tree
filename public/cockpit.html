@@ -102,6 +102,7 @@
     </button>
     <button class="tab-btn" data-tab="tabGit">
       <span class="tab-icon">🧭</span> Git & Branch
+      <span id="badgeGit" class="tab-badge yellow hidden">0</span>
     </button>
   </nav>
 
@@ -111,6 +112,10 @@
     <section id="tabPorts" class="tab-pane active">
       <div class="pane-toolbar">
         <div class="toolbar-title">Active Listening Ports</div>
+        <div class="ports-filter-group">
+          <button id="btnFilterProjectPorts" class="filter-tab-btn active" data-filter="project">⚡ This Project</button>
+          <button id="btnFilterAllPorts" class="filter-tab-btn" data-filter="all">🌐 All Dev Ports</button>
+        </div>
         <div class="toolbar-actions">
           <button id="btnRefreshPorts" class="pill-btn">🔄 Refresh</button>
         </div>
@@ -230,6 +235,27 @@
         <div class="git-row">
           <span class="git-label">Remote Ahead / Behind:</span>
           <span class="git-val" id="gitAheadBehind">—</span>
+        </div>
+      </div>
+
+      <div class="git-changes-section" id="gitChangesSection">
+        <div class="git-changes-header">
+          <span>Changed Files (<strong id="gitChangesCount">0</strong>)</span>
+        </div>
+        <div class="git-changes-table-wrap">
+          <table class="data-table" id="gitChangesTable">
+            <thead>
+              <tr>
+                <th style="width: 80px;">Status</th>
+                <th>File Path</th>
+              </tr>
+            </thead>
+            <tbody id="gitChangesBody">
+              <tr>
+                <td colspan="2" class="table-empty">No uncommitted changes detected. Working tree clean.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
