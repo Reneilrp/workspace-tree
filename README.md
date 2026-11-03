@@ -1,47 +1,73 @@
 # 🌲 Workspace Tree (Dual-OS Visual Navigator)
 
-A lightweight, fluid, interactive visual tree on a clean white canvas that branches your filesystem into **Windows** and **Ubuntu (WSL)**.
+A lightweight, fluid, interactive visual tree on a clean white canvas that branches your filesystem into **Windows**, **Ubuntu (WSL)**, and native **Linux**.
 
 ---
 
 ## ✨ Features
 
 - **Split Trunk Visualization:**
-  - 🐧 **Ubuntu Branch:** Directly bridges your WSL filesystem (`\\wsl.localhost\Ubuntu\home\<user>`)
-  - 🪟 **Windows Branch:** Bridges your local Windows filesystem (`C:\Users\<user>`)
+  - 🐧 **Ubuntu / Linux Branch:** Bridges your WSL filesystem (`\\wsl.localhost\Ubuntu\home\<user>`) or native Linux home (`$HOME`).
+  - 🪟 **Windows Branch:** Bridges your local Windows filesystem (`C:\Users\<user>`).
 - **Fluid Animation & High-DPI Canvas:**
   - 60–120 FPS physics-based spring expansion/collapse
   - Smooth Bezier branching curves with glowing hover states
   - Infinite pan and smooth cursor-centered zoom
-- **Smart Project Detection:**
-  - Automatically recognizes Git repositories, Node.js, Python, Rust, Go, and Java projects
+- **Smart Project & Framework Detection:**
+  - **Node / Express:** Auto-detects package scripts and standalone entrypoints (`server.js`, `app.js`, `index.js`).
+  - **Python Ecosystem:** Auto-detects virtual environments (`.venv`, `venv`), frameworks (**Django**, **FastAPI**, **Flask**), and entry scripts (`manage.py`, `app.py`, `main.py`).
+  - **Rust, Go, Java, Docker, Git:** Auto-identifies repos, branch statuses, and active port bindings.
+- **Embedded Multi-Process Dev Server:**
+  - Run, stream live stdout/stderr logs, and terminate processes safely with process-tree cleanup.
+  - Built-in custom command runner (`⚙️ Custom command...`).
 - **Desktop Actions:**
-  - One-click launch into **VS Code**, **Windows Explorer**, or **Windows Terminal**
+  - One-click launch into **VS Code**, default file manager (**Explorer / xdg-open**), or terminal (**Windows Terminal / Linux default terminal**).
 - **Lightweight & Fast:**
-  - Built with native Node.js 22 (zero heavy backend npm dependencies)
-  - Starts in ~10 milliseconds
-  - Port **7337**
+  - Pure native desktop app powered by **Tauri v2** + **Rust** (~2 MB binary/installer).
+  - Also runs as a standalone browser app via Node.js on port **7337**.
 
 ---
 
 ## 🚀 Quick Start
 
-### Option 1: Native Windows Installer (No Node.js Required!)
-Run the installer wizard:
-👉 **`Workspace-Tree-Setup-v1.0.0.exe`** (or in `src-tauri/target/release/bundle/nsis/`)
-- Pure native Windows application powered by **Tauri v2** + **Rust**.
-- Installer size is only **~2.01 MB**!
+### 🪟 Windows (Native Installer)
+Download and run the installer wizard from [Releases](https://github.com/Reneilrp/workspace-tree/releases):
+👉 **`Workspace-Tree-Setup-v1.0.0.exe`**
+- Only **~2.03 MB**!
 - Creates desktop & start menu shortcuts with an uninstaller wizard.
 
-### Option 2: Browser & Local Server
+### 🐧 Linux (Debian / Ubuntu / Universal)
+- **Debian / Ubuntu:** Install the `.deb` package:
+  ```bash
+  sudo dpkg -i workspace-tree_*_amd64.deb
+  ```
+- **Universal Linux:** Run the `.AppImage`:
+  ```bash
+  chmod +x workspace-tree_*_amd64.AppImage
+  ./workspace-tree_*_amd64.AppImage
+  ```
+
+### 🌐 Option 3: Browser & Local Server
 ```bash
-cd "C:\Users\ASUS TUF A5\workspace-tree"
 node server.js
 ```
 Then open: 👉 **[http://localhost:7337](http://localhost:7337)**
 
-### 🛠️ Building the Installer from Source
+---
+
+## 🛠️ Building from Source
+
+### On Windows
 ```bash
+npm install
+npm run tauri build
+```
+
+### On Linux (Ubuntu / Debian)
+```bash
+sudo apt update
+sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+npm install
 npm run tauri build
 ```
 

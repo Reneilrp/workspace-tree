@@ -95,80 +95,117 @@ pub fn normalize_path_cmp(p: &str) -> String {
 pub fn get_roots() -> Vec<RootItem> {
     let mut roots = Vec::new();
 
-    let win_home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\".to_string());
-    roots.push(RootItem {
-        id: "win-root".to_string(),
-        name: "Windows".to_string(),
-        subname: win_home.clone(),
-        path: win_home,
-        os: "windows".to_string(),
-        root_type: "os-root".to_string(),
-        icon: "windows".to_string(),
-        disabled: None,
-    });
+    #[cfg(target_os = "windows")]
+    {
+        let win_home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\".to_string());
+        roots.push(RootItem {
+            id: "win-root".to_string(),
+            name: "Windows".to_string(),
+            subname: win_home.clone(),
+            path: win_home,
+            os: "windows".to_string(),
+            root_type: "os-root".to_string(),
+            icon: "windows".to_string(),
+            disabled: None,
+        });
 
-    let potential_hosts = [r"\\wsl.localhost", r"\\wsl$"];
-    for host in potential_hosts {
-        if let Ok(distro_entries) = fs::read_dir(host) {
-            for distro in distro_entries.flatten() {
-                let distro_name = distro.file_name().to_string_lossy().to_string();
-                let lower_name = distro_name.to_lowercase();
-                if lower_name.contains("ubuntu")
-                    || lower_name.contains("debian")
-                    || lower_name.contains("wsl")
-                {
-                    let home_dir = Path::new(host).join(&distro_name).join("home");
-                    if let Ok(users) = fs::read_dir(&home_dir) {
-                        for user in users.flatten() {
-                            let user_name = user.file_name().to_string_lossy().to_string();
-                            let user_home = home_dir.join(&user_name);
-                            if user_home.is_dir() {
-                                let path_str = user_home.to_string_lossy().to_string();
-                                roots.push(RootItem {
-                                    id: format!("wsl-{}-{}", distro_name, user_name),
-                                    name: format!("Ubuntu ({})", user_name),
-                                    subname: format!("/home/{}", user_name),
-                                    path: path_str,
-                                    os: "ubuntu".to_string(),
-                                    root_type: "os-root".to_string(),
-                                    icon: "ubuntu".to_string(),
-                                    disabled: None,
-                                });
-                                break;
+        let potential_hosts = [r"\\wsl.localhost", r"\\wsl$"];
+        for host in potential_hosts {
+            if let Ok(distro_entries) = fs::read_dir(host) {
+                for distro in distro_entries.flatten() {
+                    let distro_name = distro.file_name().to_string_lossy().to_string();
+                    let lower_name = distro_name.to_lowercase();
+                    if lower_name.contains("ubuntu")
+                        || lower_name.contains("debian")
+                        || lower_name.contains("wsl")
+                    {
+                        let home_dir = Path::new(host).join(&distro_name).join("home");
+                        if let Ok(users) = fs::read_dir(&home_dir) {
+                            for user in users.flatten() {
+                                let user_name = user.file_name().to_string_lossy().to_string();
+                                let user_home = home_dir.join(&user_name);
+                                if user_home.is_dir() {
+                                    let path_str = user_home.to_string_lossy().to_string();
+                                    roots.push(RootItem {
+                                        id: format!("wsl-{}-{}", distro_name, user_name),
+                                        name: format!("Ubuntu ({})", user_name),
+                                        subname: format!("/home/{}", user_name),
+                                        path: path_str,
+                                        os: "ubuntu".to_string(),
+                                        root_type: "os-root".to_string(),
+                                        icon: "ubuntu".to_string(),
+                                        disabled: None,
+                                    });
+                                    break;
+                                }
                             }
                         }
                     }
                 }
+                if roots.len() > 1 {
+                    break;
+                }
             }
-            if roots.len() > 1 {
-                break;
+        }
+
+        if roots.len() == 1 {
+            let fallback_path = r"\\wsl.localhost\Ubuntu\home\pheinz";
+            if Path::new(fallback_path).exists() {
+                roots.push(RootItem {
+                    id: "ubuntu-root".to_string(),
+                    name: "Ubuntu (WSL)".to_string(),
+                    subname: "/home/pheinz".to_string(),
+                    path: fallback_path.to_string(),
+                    os: "ubuntu".to_string(),
+                    root_type: "os-root".to_string(),
+                    icon: "ubuntu".to_string(),
+                    disabled: None,
+                });
+            } else {
+                roots.push(RootItem {
+                    id: "ubuntu-root".to_string(),
+                    name: "Ubuntu (WSL)".to_string(),
+                    subname: "Not currently active".to_string(),
+                    path: r"\\wsl.localhost\Ubuntu".to_string(),
+                    os: "ubuntu".to_string(),
+                    root_type: "os-root".to_string(),
+                    icon: "ubuntu".to_string(),
+                    disabled: Some(true),
+                });
             }
         }
     }
 
-    if roots.len() == 1 {
-        let fallback_path = r"\\wsl.localhost\Ubuntu\home\pheinz";
-        if Path::new(fallback_path).exists() {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home".to_string());
+        let username = Path::new(&home)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "User".to_string());
+
+        roots.push(RootItem {
+            id: "linux-home".to_string(),
+            name: format!("Home ({})", username),
+            subname: home.clone(),
+            path: home,
+            os: "ubuntu".to_string(),
+            root_type: "os-root".to_string(),
+            icon: "ubuntu".to_string(),
+            disabled: None,
+        });
+
+        // If running in dual-boot or with mounted Windows C: drive
+        if Path::new("/mnt/c").exists() {
             roots.push(RootItem {
-                id: "ubuntu-root".to_string(),
-                name: "Ubuntu (WSL)".to_string(),
-                subname: "/home/pheinz".to_string(),
-                path: fallback_path.to_string(),
-                os: "ubuntu".to_string(),
+                id: "win-mnt-c".to_string(),
+                name: "Windows (C:)".to_string(),
+                subname: "/mnt/c".to_string(),
+                path: "/mnt/c".to_string(),
+                os: "windows".to_string(),
                 root_type: "os-root".to_string(),
-                icon: "ubuntu".to_string(),
+                icon: "windows".to_string(),
                 disabled: None,
-            });
-        } else {
-            roots.push(RootItem {
-                id: "ubuntu-root".to_string(),
-                name: "Ubuntu (WSL)".to_string(),
-                subname: "Not currently active".to_string(),
-                path: r"\\wsl.localhost\Ubuntu".to_string(),
-                os: "ubuntu".to_string(),
-                root_type: "os-root".to_string(),
-                icon: "ubuntu".to_string(),
-                disabled: Some(true),
             });
         }
     }

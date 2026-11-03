@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::SystemTime;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
@@ -13,6 +15,7 @@ use tauri::{AppHandle, Emitter};
 use crate::fs_scanner::{is_wsl_path, to_linux_path};
 use crate::models::{ActionResponse, RunningServerSummary, ServerStatusResponse};
 
+#[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub struct ServerProcessEntry {
@@ -87,6 +90,7 @@ impl ServerManager {
         // If an existing server is running for this key, stop it first
         let _ = self.stop_server(app, Some(target_path));
 
+        #[cfg(target_os = "windows")]
         let spawn_res = if is_wsl {
             let linux_path = to_linux_path(&working_dir);
             Command::new("wsl.exe")
@@ -104,6 +108,14 @@ impl ServerManager {
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
         };
+
+        #[cfg(not(target_os = "windows"))]
+        let spawn_res = Command::new("bash")
+            .args(["-ic", command])
+            .current_dir(&working_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
 
         match spawn_res {
             Ok(mut child) => {
@@ -139,7 +151,7 @@ impl ServerManager {
                         "projectId": key,
                         "projectName": project_name,
                         "servers": current_servers,
-                        "text": format!("🚀 [{}] Starting: {}\n📂 Directory: {} [{}]\n", project_name, command, working_dir, if is_wsl { "Ubuntu WSL" } else { "Windows" })
+                        "text": format!("🚀 [{}] Starting: {}\n📂 Directory: {}\n", project_name, command, working_dir)
                     }),
                 );
 
@@ -261,16 +273,27 @@ impl ServerManager {
             if tp == "all" {
                 for (_, mut item) in map.drain() {
                     let pid = item.child.id();
-                    let _ = Command::new("taskkill")
-                        .args(["/F", "/PID", &pid.to_string(), "/T"])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .output();
-                    let _ = item.child.kill();
-                    if item.is_wsl {
-                        let _ = Command::new("wsl.exe")
-                            .args(["-d", "Ubuntu", "pkill", "-f", &item.command])
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = Command::new("taskkill")
+                            .args(["/F", "/PID", &pid.to_string(), "/T"])
                             .creation_flags(CREATE_NO_WINDOW)
                             .output();
+                        let _ = item.child.kill();
+                        if item.is_wsl {
+                            let _ = Command::new("wsl.exe")
+                                .args(["-d", "Ubuntu", "pkill", "-f", &item.command])
+                                .creation_flags(CREATE_NO_WINDOW)
+                                .output();
+                        }
+                    }
+
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        let _ = Command::new("kill")
+                            .args(["-9", &pid.to_string()])
+                            .output();
+                        let _ = item.child.kill();
                     }
                 }
                 let _ = app.emit("server-log", json!({ "type": "status", "running": false, "servers": [] }));
@@ -284,16 +307,28 @@ impl ServerManager {
             let key = normalize_key(tp);
             if let Some(mut item) = map.remove(&key) {
                 let pid = item.child.id();
-                let _ = Command::new("taskkill")
-                    .args(["/F", "/PID", &pid.to_string(), "/T"])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .output();
-                let _ = item.child.kill();
-                if item.is_wsl {
-                    let _ = Command::new("wsl.exe")
-                        .args(["-d", "Ubuntu", "pkill", "-f", &item.command])
+
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = Command::new("taskkill")
+                        .args(["/F", "/PID", &pid.to_string(), "/T"])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
+                    let _ = item.child.kill();
+                    if item.is_wsl {
+                        let _ = Command::new("wsl.exe")
+                            .args(["-d", "Ubuntu", "pkill", "-f", &item.command])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                    }
+                }
+
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let _ = Command::new("kill")
+                        .args(["-9", &pid.to_string()])
+                        .output();
+                    let _ = item.child.kill();
                 }
 
                 let remaining: Vec<RunningServerSummary> = map

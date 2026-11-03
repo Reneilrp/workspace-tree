@@ -1,10 +1,13 @@
-use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 use crate::fs_scanner::{is_wsl_path, to_linux_path};
 use crate::models::ActionResponse;
 
+#[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub fn run_terminal(
@@ -14,8 +17,6 @@ pub fn run_terminal(
     custom_title: Option<&str>,
 ) -> ActionResponse {
     let working_dir = cwd.unwrap_or(target_path);
-    let is_wsl = is_wsl_path(working_dir);
-
     let p = Path::new(working_dir);
     let proj_name = custom_title
         .map(|s| s.to_string())
@@ -25,66 +26,127 @@ pub fn run_terminal(
                 .unwrap_or_else(|| "Terminal".to_string())
         });
 
-    if is_wsl {
-        let linux_path = to_linux_path(working_dir);
-        let tab_title = format!("{} (WSL)", proj_name);
+    #[cfg(target_os = "windows")]
+    {
+        let is_wsl = is_wsl_path(working_dir);
+        if is_wsl {
+            let linux_path = to_linux_path(working_dir);
+            let tab_title = format!("{} (WSL)", proj_name);
 
-        let res = if let Some(cmd) = command {
-            let bash_arg = format!("{}; exec bash", cmd);
-            Command::new("wt.exe")
-                .args(["-w", "0", "new-tab", "--title", &tab_title, "wsl.exe", "-d", "Ubuntu", "--cd", &linux_path, "bash", "-ic", &bash_arg])
-                .spawn()
-                .or_else(|_| {
-                    Command::new("cmd.exe")
-                        .args(["/c", "start", &tab_title, "wsl.exe", "-d", "Ubuntu", "--cd", &linux_path, "bash", "-ic", &bash_arg])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .spawn()
-                })
+            let res = if let Some(cmd) = command {
+                let bash_arg = format!("{}; exec bash", cmd);
+                Command::new("wt.exe")
+                    .args(["-w", "0", "new-tab", "--title", &tab_title, "wsl.exe", "-d", "Ubuntu", "--cd", &linux_path, "bash", "-ic", &bash_arg])
+                    .spawn()
+                    .or_else(|_| {
+                        Command::new("cmd.exe")
+                            .args(["/c", "start", &tab_title, "wsl.exe", "-d", "Ubuntu", "--cd", &linux_path, "bash", "-ic", &bash_arg])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn()
+                    })
+            } else {
+                Command::new("wt.exe")
+                    .args(["-w", "0", "new-tab", "--title", &tab_title, "wsl.exe", "-d", "Ubuntu", "--cd", &linux_path])
+                    .spawn()
+                    .or_else(|_| {
+                        Command::new("cmd.exe")
+                            .args(["/c", "start", &tab_title, "wsl.exe", "-d", "Ubuntu", "--cd", &linux_path])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn()
+                    })
+            };
+
+            match res {
+                Ok(_) => ActionResponse {
+                    success: true,
+                    message: Some(format!("Opened WSL Terminal for {}", proj_name)),
+                    error: None,
+                },
+                Err(e) => ActionResponse {
+                    success: false,
+                    message: None,
+                    error: Some(e.to_string()),
+                },
+            }
         } else {
-            Command::new("wt.exe")
-                .args(["-w", "0", "new-tab", "--title", &tab_title, "wsl.exe", "-d", "Ubuntu", "--cd", &linux_path])
-                .spawn()
-                .or_else(|_| {
-                    Command::new("cmd.exe")
-                        .args(["/c", "start", &tab_title, "wsl.exe", "-d", "Ubuntu", "--cd", &linux_path])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .spawn()
-                })
-        };
+            let tab_title = proj_name.clone();
 
-        match res {
-            Ok(_) => ActionResponse {
-                success: true,
-                message: Some(format!("Opened WSL Terminal for {}", proj_name)),
-                error: None,
-            },
-            Err(e) => ActionResponse {
-                success: false,
-                message: None,
-                error: Some(e.to_string()),
-            },
+            let res = if let Some(cmd) = command {
+                Command::new("wt.exe")
+                    .args(["-w", "0", "new-tab", "--title", &tab_title, "-d", working_dir, "powershell.exe", "-NoExit", "-Command", cmd])
+                    .spawn()
+                    .or_else(|_| {
+                        Command::new("cmd.exe")
+                            .args(["/c", "start", &tab_title, "/d", working_dir, "powershell.exe", "-NoExit", "-Command", cmd])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn()
+                    })
+            } else {
+                Command::new("wt.exe")
+                    .args(["-w", "0", "new-tab", "--title", &tab_title, "-d", working_dir, "powershell.exe", "-NoExit"])
+                    .spawn()
+                    .or_else(|_| {
+                        Command::new("cmd.exe")
+                            .args(["/c", "start", &tab_title, "/d", working_dir, "powershell.exe", "-NoExit"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn()
+                    })
+            };
+
+            match res {
+                Ok(_) => ActionResponse {
+                    success: true,
+                    message: Some(format!("Opened Terminal for {}", proj_name)),
+                    error: None,
+                },
+                Err(e) => ActionResponse {
+                    success: false,
+                    message: None,
+                    error: Some(e.to_string()),
+                },
+            }
         }
-    } else {
-        let tab_title = proj_name.clone();
+    }
 
+    #[cfg(not(target_os = "windows"))]
+    {
         let res = if let Some(cmd) = command {
-            Command::new("wt.exe")
-                .args(["-w", "0", "new-tab", "--title", &tab_title, "-d", working_dir, "powershell.exe", "-NoExit", "-Command", cmd])
+            let full_cmd = format!("cd '{}' && {}; exec bash", working_dir, cmd);
+            Command::new("x-terminal-emulator")
+                .args(["-e", "bash", "-c", &full_cmd])
                 .spawn()
                 .or_else(|_| {
-                    Command::new("cmd.exe")
-                        .args(["/c", "start", &tab_title, "/d", working_dir, "powershell.exe", "-NoExit", "-Command", cmd])
-                        .creation_flags(CREATE_NO_WINDOW)
+                    Command::new("gnome-terminal")
+                        .args(["--working-directory", working_dir, "--", "bash", "-c", &full_cmd])
+                        .spawn()
+                })
+                .or_else(|_| {
+                    Command::new("alacritty")
+                        .args(["--working-directory", working_dir, "-e", "bash", "-c", &full_cmd])
+                        .spawn()
+                })
+                .or_else(|_| {
+                    Command::new("konsole")
+                        .args(["--workdir", working_dir, "-e", "bash", "-c", &full_cmd])
                         .spawn()
                 })
         } else {
-            Command::new("wt.exe")
-                .args(["-w", "0", "new-tab", "--title", &tab_title, "-d", working_dir, "powershell.exe", "-NoExit"])
+            Command::new("x-terminal-emulator")
+                .current_dir(working_dir)
                 .spawn()
                 .or_else(|_| {
-                    Command::new("cmd.exe")
-                        .args(["/c", "start", &tab_title, "/d", working_dir, "powershell.exe", "-NoExit"])
-                        .creation_flags(CREATE_NO_WINDOW)
+                    Command::new("gnome-terminal")
+                        .arg(format!("--working-directory={}", working_dir))
+                        .spawn()
+                })
+                .or_else(|_| {
+                    Command::new("alacritty")
+                        .args(["--working-directory", working_dir])
+                        .spawn()
+                })
+                .or_else(|_| {
+                    Command::new("konsole")
+                        .args(["--workdir", working_dir])
                         .spawn()
                 })
         };
@@ -105,87 +167,143 @@ pub fn run_terminal(
 }
 
 pub fn launch_action(action: &str, target_path: &str, _custom_title: Option<&str>) -> ActionResponse {
-    let is_wsl = is_wsl_path(target_path);
-    let linux_path = if is_wsl { to_linux_path(target_path) } else { String::new() };
+    #[cfg(target_os = "windows")]
+    {
+        let is_wsl = is_wsl_path(target_path);
+        let linux_path = if is_wsl { to_linux_path(target_path) } else { String::new() };
 
-    match action {
-        "vscode" => {
-            let res = if is_wsl {
-                Command::new("wsl.exe")
-                    .args(["-d", "Ubuntu", "--cd", &linux_path, "code", "."])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .spawn()
-                    .or_else(|_| {
-                        Command::new("cmd.exe")
-                            .args(["/c", "code", target_path])
-                            .creation_flags(CREATE_NO_WINDOW)
-                            .spawn()
-                    })
-            } else {
-                Command::new("cmd.exe")
-                    .args(["/c", "code", "."])
-                    .current_dir(target_path)
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .spawn()
-                    .or_else(|_| {
-                        Command::new("cmd.exe")
-                            .args(["/c", "code", target_path])
-                            .creation_flags(CREATE_NO_WINDOW)
-                            .spawn()
-                    })
-            };
+        match action {
+            "vscode" => {
+                let res = if is_wsl {
+                    Command::new("wsl.exe")
+                        .args(["-d", "Ubuntu", "--cd", &linux_path, "code", "."])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .spawn()
+                        .or_else(|_| {
+                            Command::new("cmd.exe")
+                                .args(["/c", "code", target_path])
+                                .creation_flags(CREATE_NO_WINDOW)
+                                .spawn()
+                        })
+                } else {
+                    Command::new("cmd.exe")
+                        .args(["/c", "code", "."])
+                        .current_dir(target_path)
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .spawn()
+                        .or_else(|_| {
+                            Command::new("cmd.exe")
+                                .args(["/c", "code", target_path])
+                                .creation_flags(CREATE_NO_WINDOW)
+                                .spawn()
+                        })
+                };
 
-            match res {
-                Ok(_) => ActionResponse {
-                    success: true,
-                    message: Some("Opened in VS Code".to_string()),
-                    error: None,
-                },
-                Err(e) => ActionResponse {
-                    success: false,
-                    message: None,
-                    error: Some(e.to_string()),
-                },
+                match res {
+                    Ok(_) => ActionResponse {
+                        success: true,
+                        message: Some("Opened in VS Code".to_string()),
+                        error: None,
+                    },
+                    Err(e) => ActionResponse {
+                        success: false,
+                        message: None,
+                        error: Some(e.to_string()),
+                    },
+                }
             }
-        }
-        "explorer" => {
-            let p = Path::new(target_path);
-            let is_file = p.is_file();
+            "explorer" => {
+                let p = Path::new(target_path);
+                let is_file = p.is_file();
 
-            let res = if is_file {
-                let cmd = format!("Start-Process explorer.exe -ArgumentList '/select,\"{}\"'", target_path);
-                Command::new("powershell.exe")
-                    .args(["-NoProfile", "-Command", &cmd])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .spawn()
-            } else {
-                Command::new("rundll32.exe")
-                    .args(["url.dll,FileProtocolHandler", target_path])
+                let res = if is_file {
+                    let cmd = format!("Start-Process explorer.exe -ArgumentList '/select,\"{}\"'", target_path);
+                    Command::new("powershell.exe")
+                        .args(["-NoProfile", "-Command", &cmd])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .spawn()
+                } else {
+                    Command::new("rundll32.exe")
+                        .args(["url.dll,FileProtocolHandler", target_path])
+                        .spawn()
+                        .or_else(|_| {
+                            Command::new("explorer.exe")
+                                .arg(target_path)
+                                .spawn()
+                        })
+                };
+
+                match res {
+                    Ok(_) => ActionResponse {
+                        success: true,
+                        message: Some("Opened in Explorer".to_string()),
+                        error: None,
+                    },
+                    Err(e) => ActionResponse {
+                        success: false,
+                        message: None,
+                        error: Some(e.to_string()),
+                    },
+                }
+            }
+            _ => ActionResponse {
+                success: false,
+                message: None,
+                error: Some(format!("Unknown action: {}", action)),
+            },
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        match action {
+            "vscode" => {
+                let res = Command::new("code")
+                    .arg(".")
+                    .current_dir(target_path)
                     .spawn()
                     .or_else(|_| {
-                        Command::new("explorer.exe")
+                        Command::new("code")
                             .arg(target_path)
                             .spawn()
-                    })
-            };
+                    });
 
-            match res {
-                Ok(_) => ActionResponse {
-                    success: true,
-                    message: Some("Opened in Explorer".to_string()),
-                    error: None,
-                },
-                Err(e) => ActionResponse {
-                    success: false,
-                    message: None,
-                    error: Some(e.to_string()),
-                },
+                match res {
+                    Ok(_) => ActionResponse {
+                        success: true,
+                        message: Some("Opened in VS Code".to_string()),
+                        error: None,
+                    },
+                    Err(e) => ActionResponse {
+                        success: false,
+                        message: None,
+                        error: Some(e.to_string()),
+                    },
+                }
             }
+            "explorer" => {
+                let res = Command::new("xdg-open")
+                    .arg(target_path)
+                    .spawn();
+
+                match res {
+                    Ok(_) => ActionResponse {
+                        success: true,
+                        message: Some("Opened in File Manager".to_string()),
+                        error: None,
+                    },
+                    Err(e) => ActionResponse {
+                        success: false,
+                        message: None,
+                        error: Some(e.to_string()),
+                    },
+                }
+            }
+            _ => ActionResponse {
+                success: false,
+                message: None,
+                error: Some(format!("Unknown action: {}", action)),
+            },
         }
-        _ => ActionResponse {
-            success: false,
-            message: None,
-            error: Some(format!("Unknown action: {}", action)),
-        },
     }
 }
