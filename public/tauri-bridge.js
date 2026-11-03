@@ -77,9 +77,11 @@
       } else if (pathname === '/api/storage-clean') {
         result = await invoke('clean_storage', { path: body.path, targets: body.targets || [] });
       } else if (pathname === '/api/server-start') {
-        result = await invoke('start_server', { path: body.path, command: body.command, cwd: body.cwd, customName: body.customName });
+        const customName = body.name || body.customName;
+        result = await invoke('start_server', { path: body.path, command: body.command, cwd: body.cwd, customName });
       } else if (pathname === '/api/server-stop') {
-        result = await invoke('stop_server', { path: body.path });
+        const stopPath = body.path || params.get('path') || null;
+        result = await invoke('stop_server', { path: stopPath });
       } else if (pathname === '/api/server-status') {
         result = await invoke('get_server_status');
       } else if (pathname === '/api/network-info') {
@@ -117,12 +119,21 @@
 
       let unlisten = null;
       const setupListener = async () => {
+        const invoke = getInvoke();
         if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) {
           unlisten = await window.__TAURI__.event.listen('server-log', (event) => {
             if (emitter.onmessage) {
               emitter.onmessage({ data: JSON.stringify(event.payload) });
             }
           });
+        }
+        if (invoke) {
+          try {
+            const status = await invoke('get_server_status');
+            if (emitter.onmessage) {
+              emitter.onmessage({ data: JSON.stringify({ type: 'init', servers: status.servers || [], logs: [] }) });
+            }
+          } catch {}
         }
       };
       setupListener();

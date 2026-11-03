@@ -193,11 +193,21 @@ pub struct StorageCleanResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunningServerSummary {
     pub id: String,
+    pub key: String,
     pub name: String,
     pub path: String,
+    #[serde(rename = "projectName")]
+    pub project_name: String,
+    #[serde(rename = "projectPath")]
+    pub project_path: String,
+    #[serde(rename = "workingDir")]
+    pub working_dir: String,
     pub command: String,
     #[serde(rename = "startedAt")]
     pub started_at: String,
+    #[serde(rename = "startTime")]
+    pub start_time: u64,
+    pub os: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
