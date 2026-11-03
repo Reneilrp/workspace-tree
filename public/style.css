@@ -959,6 +959,12 @@ body {
   color: #7c3aed;
 }
 
+.action-cockpit:hover {
+  border-color: #0284c7;
+  color: #0284c7;
+  background: #f0f9ff;
+}
+
 .action-code:hover {
   border-color: #3b82f6;
   color: #2563eb;
@@ -2674,4 +2680,88 @@ body.style-system .cursor-ring {
 .storage-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Floating Update Notification Banner */
+.update-banner {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99999;
+  animation: slideDownUpdate 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+.update-banner.hidden {
+  display: none !important;
+}
+
+@keyframes slideDownUpdate {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.update-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffffff;
+  padding: 7px 14px 7px 16px;
+  border-radius: 999px;
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.25), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.update-sparkle {
+  font-size: 14px;
+}
+
+.update-text {
+  color: #f8fafc;
+}
+
+.update-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #0284c7;
+  color: #ffffff;
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+.update-download-btn:hover {
+  background: #0369a1;
+  transform: translateY(-1px);
+}
+
+.update-close-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.update-close-btn:hover {
+  color: #ffffff;
 }

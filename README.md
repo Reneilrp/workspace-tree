@@ -20,6 +20,13 @@ A lightweight, fluid, interactive visual tree on a clean white canvas that branc
 - **Embedded Multi-Process Dev Server:**
   - Run, stream live stdout/stderr logs, and terminate processes safely with process-tree cleanup.
   - Built-in custom command runner (`⚙️ Custom command...`).
+- **🎛️ Detached Project Cockpit Studio (v1.1.0):**
+  - Dedicated multi-window companion workspace with live pre-flight diagnostics.
+  - **🛡️ Ports & Sockets (Zombie Killer):** Auto-detects occupied dev ports (`3000`, `5173`, `8000`, etc.) and kills dead/zombie processes with 1 click across Windows and WSL.
+  - **🩻 .Env Guard (EnvDrift):** Audits `.env` against `.env.example` templates, highlighting missing variables with a 1-click "Copy Missing Template" button.
+  - **📋 Live Stream Terminal:** Monospace streaming output with auto-scroll and process supervisor.
+- **✨ In-App Update Notifier:**
+  - Automatic non-blocking GitHub release checking to notify users of future updates.
 - **Desktop Actions:**
   - One-click launch into **VS Code**, default file manager (**Explorer / xdg-open**), or terminal (**Windows Terminal / Linux default terminal**).
 - **Lightweight & Fast:**
@@ -32,7 +39,7 @@ A lightweight, fluid, interactive visual tree on a clean white canvas that branc
 
 ### 🪟 Windows (Native Installer)
 Download and run the installer wizard from [Releases](https://github.com/Reneilrp/workspace-tree/releases):
-👉 **`Workspace-Tree-Setup-v1.0.0.exe`**
+👉 **`Workspace-Tree-Setup-v1.1.0.exe`**
 - Only **~2.03 MB**!
 - Creates desktop & start menu shortcuts with an uninstaller wizard.
 

@@ -84,6 +84,14 @@
         result = await invoke('stop_server', { path: stopPath });
       } else if (pathname === '/api/server-status') {
         result = await invoke('get_server_status');
+      } else if (pathname === '/api/open-cockpit') {
+        const path = body.path || params.get('path');
+        result = await invoke('open_project_cockpit', { path });
+      } else if (pathname === '/api/env-drift') {
+        const path = params.get('path') || body.path;
+        result = await invoke('check_env_drift', { path });
+      } else if (pathname === '/api/save-env') {
+        result = await invoke('save_env_file', { path: body.path, content: body.content });
       } else if (pathname === '/api/network-info') {
         result = { success: true, ips: ['127.0.0.1'], port: 0 };
       } else if (pathname === '/api/service-shutdown') {

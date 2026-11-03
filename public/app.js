@@ -78,6 +78,7 @@ const inspTypeTag = document.getElementById('inspTypeTag');
 const inspName = document.getElementById('inspName');
 const inspPath = document.getElementById('inspPath');
 const inspCloseBtn = document.getElementById('inspCloseBtn');
+const btnOpenCockpit = document.getElementById('btnOpenCockpit');
 const btnOpenTab = document.getElementById('btnOpenTab');
 const btnOpenTabText = document.getElementById('btnOpenTabText');
 const btnFocusView = document.getElementById('btnFocusView');
@@ -2637,9 +2638,11 @@ function selectNode(node) {
   }
 
   if (isFile) {
+    if (btnOpenCockpit) btnOpenCockpit.classList.add('hidden');
     if (btnOpenTab) btnOpenTab.classList.add('hidden');
     if (btnFocusView) btnFocusView.classList.add('hidden');
   } else {
+    if (btnOpenCockpit) btnOpenCockpit.classList.remove('hidden');
     if (btnOpenTab) {
       btnOpenTab.classList.remove('hidden');
       if (btnOpenTabText) btnOpenTabText.textContent = 'Open Tab';
@@ -2674,6 +2677,27 @@ btnOpenTab.addEventListener('click', () => {
     inspectorCard.classList.add('hidden');
   }
 });
+
+if (btnOpenCockpit) {
+  btnOpenCockpit.addEventListener('click', async () => {
+    if (!selectedNode || !selectedNode.path) return;
+    try {
+      const isTauri = typeof window.__TAURI_INTERNALS__ !== 'undefined' || typeof window.__TAURI__ !== 'undefined';
+      if (isTauri) {
+        await fetch('/api/open-cockpit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: selectedNode.path })
+        });
+      } else {
+        const win = window.open(`/cockpit.html?path=${encodeURIComponent(selectedNode.path)}`, 'cockpit', 'width=960,height=680,resizable=yes');
+        if (win) win.focus();
+      }
+    } catch (err) {
+      console.error('Failed to open cockpit:', err);
+    }
+  });
+}
 
 if (btnFocusView) {
   btnFocusView.addEventListener('click', () => {
@@ -3738,3 +3762,71 @@ applySettings();
 // Start Workspace & Render Loop
 initWorkspace();
 requestAnimationFrame(render);
+
+// ==========================================
+// 15. AUTO-UPDATE CHECKER (GitHub Releases)
+// ==========================================
+const APP_VERSION = '1.1.0';
+const GITHUB_REPO = 'Reneilrp/workspace-tree';
+
+function isNewerVersion(remoteTag, localVer) {
+  const cleanRemote = String(remoteTag || '').replace(/^v/i, '').trim();
+  const cleanLocal = String(localVer || '').replace(/^v/i, '').trim();
+  const rParts = cleanRemote.split('.').map(n => parseInt(n, 10) || 0);
+  const lParts = cleanLocal.split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(rParts.length, lParts.length); i++) {
+    const r = rParts[i] || 0;
+    const l = lParts[i] || 0;
+    if (r > l) return true;
+    if (r < l) return false;
+  }
+  return false;
+}
+
+async function checkForUpdates() {
+  const banner = document.getElementById('updateBanner');
+  const bannerText = document.getElementById('updateBannerText');
+  const btnDownload = document.getElementById('btnUpdateDownload');
+  const btnDismiss = document.getElementById('btnDismissUpdate');
+  if (!banner || !bannerText || !btnDownload) return;
+
+  btnDismiss.addEventListener('click', () => {
+    banner.classList.add('hidden');
+    if (window._latestReleaseTag) {
+      try {
+        localStorage.setItem('dismissed_update_tag', window._latestReleaseTag);
+      } catch {}
+    }
+  });
+
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      headers: { 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (!res.ok) return;
+
+    const release = await res.json();
+    if (!release || !release.tag_name) return;
+
+    window._latestReleaseTag = release.tag_name;
+    const dismissed = localStorage.getItem('dismissed_update_tag');
+    if (dismissed === release.tag_name) return;
+
+    if (isNewerVersion(release.tag_name, APP_VERSION)) {
+      bannerText.textContent = `New update available: ${release.name || release.tag_name}`;
+      btnDownload.href = release.html_url || `https://github.com/${GITHUB_REPO}/releases/latest`;
+      btnDownload.addEventListener('click', () => {
+        banner.classList.add('hidden');
+        try {
+          localStorage.setItem('dismissed_update_tag', release.tag_name);
+        } catch {}
+      });
+      banner.classList.remove('hidden');
+    }
+  } catch {
+    // Silently ignore network or offline errors
+  }
+}
+
+// Check for updates 3 seconds after startup
+setTimeout(checkForUpdates, 3000);

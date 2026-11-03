@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Cockpit — Workspace Tree</title>
+  <link rel="stylesheet" href="cockpit.css">
+</head>
+<body class="cockpit-body">
+  <!-- Top Bar -->
+  <header class="cockpit-header">
+    <div class="header-left">
+      <div class="brand">
+        <span class="brand-icon">🌲</span>
+        <span class="brand-title">Workspace Cockpit</span>
+      </div>
+      <div id="projectOsBadge" class="os-pill windows">Windows</div>
+      <div id="projectTypeBadge" class="type-pill">Node.js</div>
+    </div>
+
+    <div class="header-right">
+      <button id="btnVscode" class="icon-btn" title="Open in VS Code">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+        <span>VS Code</span>
+      </button>
+      <button id="btnTerminal" class="icon-btn" title="Open Terminal">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <span>Terminal</span>
+      </button>
+      <button id="btnExplorer" class="icon-btn" title="Open in Explorer / File Manager">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span>Explorer</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Project Banner -->
+  <section class="project-banner">
+    <div class="banner-info">
+      <h1 id="projectName" class="project-title">Loading Project...</h1>
+      <div class="path-row">
+        <code id="projectPath" class="path-display">—</code>
+        <button id="btnCopyPath" class="copy-pill-btn" title="Copy Path">Copy</button>
+      </div>
+    </div>
+
+    <div class="banner-server-ctrl">
+      <div class="script-select-wrap">
+        <label for="scriptSelect">Run Script:</label>
+        <select id="scriptSelect" class="script-select">
+          <option value="">Detecting scripts...</option>
+        </select>
+      </div>
+      <div class="btn-group">
+        <button id="btnStartServer" class="btn btn-primary">
+          <span class="btn-icon">▶</span> Run Server
+        </button>
+        <button id="btnStopServer" class="btn btn-danger hidden">
+          <span class="btn-icon">⏹</span> Stop
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pre-Flight Vitals Summary Bar -->
+  <section class="vitals-bar">
+    <div class="vital-item" id="vitalPorts">
+      <span class="vital-dot gray"></span>
+      <span class="vital-label">Ports:</span>
+      <span class="vital-value" id="vitalPortsText">Scanning...</span>
+    </div>
+    <div class="vital-item" id="vitalEnv">
+      <span class="vital-dot gray"></span>
+      <span class="vital-label">.Env Guard:</span>
+      <span class="vital-value" id="vitalEnvText">Checking...</span>
+    </div>
+    <div class="vital-item" id="vitalGit">
+      <span class="vital-dot gray"></span>
+      <span class="vital-label">Git:</span>
+      <span class="vital-value" id="vitalGitText">—</span>
+    </div>
+    <div class="vital-item" id="vitalStatus">
+      <span class="vital-dot gray"></span>
+      <span class="vital-label">Server:</span>
+      <span class="vital-value" id="vitalStatusText">Idle</span>
+    </div>
+  </section>
+
+  <!-- Tabs Navigation -->
+  <nav class="cockpit-tabs">
+    <button class="tab-btn active" data-tab="tabPorts">
+      <span class="tab-icon">🛡️</span> Ports & Sockets
+      <span id="badgePorts" class="tab-badge hidden">0</span>
+    </button>
+    <button class="tab-btn" data-tab="tabEnv">
+      <span class="tab-icon">🩻</span> .Env Guard
+      <span id="badgeEnv" class="tab-badge warning hidden">!</span>
+    </button>
+    <button class="tab-btn" data-tab="tabLogs">
+      <span class="tab-icon">📋</span> Console & Logs
+      <span id="badgeLogs" class="tab-badge green hidden">Live</span>
+    </button>
+    <button class="tab-btn" data-tab="tabGit">
+      <span class="tab-icon">🧭</span> Git & Branch
+    </button>
+  </nav>
+
+  <!-- Tab Contents -->
+  <main class="cockpit-content">
+    <!-- TAB 1: PORTS & SOCKETS -->
+    <section id="tabPorts" class="tab-pane active">
+      <div class="pane-toolbar">
+        <div class="toolbar-title">Active Listening Ports</div>
+        <div class="toolbar-actions">
+          <button id="btnRefreshPorts" class="pill-btn">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div class="ports-container">
+        <table class="data-table" id="portsTable">
+          <thead>
+            <tr>
+              <th>Port</th>
+              <th>Protocol</th>
+              <th>PID</th>
+              <th>Process</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="portsTableBody">
+            <tr>
+              <td colspan="6" class="table-empty">Scanning for listening ports...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ports-hint">
+        💡 <strong>Zombie Killer:</strong> If an old dev process crashed or kept holding port <code>3000</code> or <code>5173</code>, click <strong>"Kill Process"</strong> to free the socket immediately.
+      </div>
+    </section>
+
+    <!-- TAB 2: .ENV GUARD -->
+    <section id="tabEnv" class="tab-pane">
+      <div class="pane-toolbar">
+        <div class="toolbar-title">Environment Variables & Drift Audit</div>
+        <div class="toolbar-actions">
+          <button id="btnCopyMissing" class="pill-btn" title="Copy missing keys as template">📋 Copy Missing Template</button>
+          <button id="btnRefreshEnv" class="pill-btn">🔄 Re-check</button>
+        </div>
+      </div>
+
+      <div class="env-summary-cards">
+        <div class="summary-card" id="cardEnvStatus">
+          <div class="card-num" id="statEnvFile">—</div>
+          <div class="card-label">Active .env File</div>
+        </div>
+        <div class="summary-card" id="cardExampleStatus">
+          <div class="card-num" id="statExampleFile">—</div>
+          <div class="card-label">Template (.env.example)</div>
+        </div>
+        <div class="summary-card warning" id="cardMissingCount">
+          <div class="card-num" id="statMissingCount">0</div>
+          <div class="card-label">Missing Keys</div>
+        </div>
+        <div class="summary-card success" id="cardMatchedCount">
+          <div class="card-num" id="statMatchedCount">0</div>
+          <div class="card-label">Configured Keys</div>
+        </div>
+      </div>
+
+      <div class="env-table-wrap">
+        <table class="data-table" id="envTable">
+          <thead>
+            <tr>
+              <th>Variable Key</th>
+              <th>Status</th>
+              <th>In .env</th>
+              <th>Example / Template Hint</th>
+            </tr>
+          </thead>
+          <tbody id="envTableBody">
+            <tr>
+              <td colspan="4" class="table-empty">Analyzing environment variables...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 3: CONSOLE & LOGS -->
+    <section id="tabLogs" class="tab-pane">
+      <div class="pane-toolbar">
+        <div class="toolbar-title" id="logsTitle">Process Console Output</div>
+        <div class="toolbar-actions">
+          <label class="checkbox-label">
+            <input type="checkbox" id="chkAutoScroll" checked> Auto-scroll
+          </label>
+          <button id="btnClearLogs" class="pill-btn">🧹 Clear</button>
+        </div>
+      </div>
+
+      <div class="terminal-window" id="terminalOutput">
+        <div class="terminal-line system">[Cockpit Ready. Click "Run Server" to start process.]</div>
+      </div>
+    </section>
+
+    <!-- TAB 4: GIT & BRANCH -->
+    <section id="tabGit" class="tab-pane">
+      <div class="pane-toolbar">
+        <div class="toolbar-title">Git Repository Status</div>
+        <div class="toolbar-actions">
+          <button id="btnRefreshGit" class="pill-btn">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div class="git-details-card">
+        <div class="git-row">
+          <span class="git-label">Current Branch:</span>
+          <span class="git-val" id="gitBranchName">—</span>
+        </div>
+        <div class="git-row">
+          <span class="git-label">Working Tree:</span>
+          <span class="git-val" id="gitWorkingStatus">—</span>
+        </div>
+        <div class="git-row">
+          <span class="git-label">Uncommitted Changes:</span>
+          <span class="git-val" id="gitUncommitted">—</span>
+        </div>
+        <div class="git-row">
+          <span class="git-label">Remote Ahead / Behind:</span>
+          <span class="git-val" id="gitAheadBehind">—</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="tauri-bridge.js"></script>
+  <script src="cockpit.js"></script>
+</body>
+</html>

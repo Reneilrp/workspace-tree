@@ -6,11 +6,11 @@ pub mod system_tools;
 
 use dev_server::ServerManager;
 use models::{
-    ActionResponse, ActivePortsResponse, BrowseResult, FileContentResponse, GitStatusResponse,
-    ProjectDetailsResult, RootItem, SearchResultItem, ServerStatusResponse, StorageCleanResponse,
-    StorageFootprintResponse, TranslatePathResponse,
+    ActionResponse, ActivePortsResponse, BrowseResult, EnvDriftResponse, FileContentResponse,
+    GitStatusResponse, ProjectDetailsResult, RootItem, SearchResultItem, ServerStatusResponse,
+    StorageCleanResponse, StorageFootprintResponse, TranslatePathResponse,
 };
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
 fn get_roots() -> Vec<RootItem> {
@@ -130,6 +130,70 @@ fn get_server_status(state: State<'_, ServerManager>) -> ServerStatusResponse {
     state.get_server_status()
 }
 
+fn urlencode_simple(s: &str) -> String {
+    let mut result = String::new();
+    for b in s.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(b as char);
+            }
+            _ => {
+                result.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    result
+}
+
+#[tauri::command]
+fn open_project_cockpit(app: AppHandle, path: String) -> ActionResponse {
+    let window_label = "cockpit";
+
+    if let Some(window) = app.get_webview_window(window_label) {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        let _ = window.emit("switch-project", serde_json::json!({ "path": path }));
+        return ActionResponse {
+            success: true,
+            message: Some("Cockpit focused".to_string()),
+            error: None,
+        };
+    }
+
+    let encoded_path = urlencode_simple(&path);
+    let url_str = format!("cockpit.html?path={}", encoded_path);
+
+    let builder = WebviewWindowBuilder::new(&app, window_label, WebviewUrl::App(url_str.into()))
+        .title("Project Cockpit — Workspace Tree")
+        .inner_size(960.0, 680.0)
+        .min_inner_size(720.0, 520.0)
+        .resizable(true);
+
+    match builder.build() {
+        Ok(_) => ActionResponse {
+            success: true,
+            message: Some("Cockpit opened".to_string()),
+            error: None,
+        },
+        Err(e) => ActionResponse {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to open cockpit window: {}", e)),
+        },
+    }
+}
+
+#[tauri::command]
+fn check_env_drift(path: String) -> EnvDriftResponse {
+    system_tools::check_env_drift(&path)
+}
+
+#[tauri::command]
+fn save_env_file(path: String, content: String) -> ActionResponse {
+    system_tools::save_env_file(&path, &content)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -152,6 +216,9 @@ pub fn run() {
             start_server,
             stop_server,
             get_server_status,
+            open_project_cockpit,
+            check_env_drift,
+            save_env_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

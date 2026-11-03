@@ -1271,6 +1271,79 @@ async function cleanArtifacts(targetPath, targets = []) {
 }
 
 // MIME types dictionary
+
+async function checkEnvDrift(targetPath) {
+  if (!targetPath) return { success: false, error: 'No path specified' };
+  const envCandidates = ['.env', '.env.local'];
+  const exampleCandidates = ['.env.example', '.env.template', '.env.sample', 'example.env'];
+  let actualEnvFile = null;
+  let actualEnvContent = '';
+  for (const cand of envCandidates) {
+    const p = path.join(targetPath, cand);
+    try {
+      actualEnvContent = await fsp.readFile(p, 'utf-8');
+      actualEnvFile = cand;
+      break;
+    } catch {}
+  }
+  let actualExampleFile = null;
+  let actualExampleContent = '';
+  for (const cand of exampleCandidates) {
+    const p = path.join(targetPath, cand);
+    try {
+      actualExampleContent = await fsp.readFile(p, 'utf-8');
+      actualExampleFile = cand;
+      break;
+    } catch {}
+  }
+  const parseMap = (text) => {
+    const map = new Map();
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const idx = line.indexOf('=');
+      if (idx !== -1) {
+        const k = line.substring(0, idx).trim();
+        const v = line.substring(idx + 1).trim();
+        if (k) map.set(k, v);
+      }
+    }
+    return map;
+  };
+  const envMap = parseMap(actualEnvContent);
+  const exMap = parseMap(actualExampleContent);
+  const keys = [];
+  let missingCount = 0;
+  let matchedCount = 0;
+  let extraCount = 0;
+  for (const [k, exVal] of exMap.entries()) {
+    if (envMap.has(k)) {
+      matchedCount++;
+      keys.push({ key: k, status: 'matched', exampleValue: exVal, hasValue: envMap.get(k).length > 0 });
+    } else {
+      missingCount++;
+      keys.push({ key: k, status: 'missing', exampleValue: exVal, hasValue: false });
+    }
+  }
+  for (const [k, val] of envMap.entries()) {
+    if (!exMap.has(k)) {
+      extraCount++;
+      keys.push({ key: k, status: 'extra', exampleValue: null, hasValue: val.length > 0 });
+    }
+  }
+  return {
+    success: true,
+    hasEnv: actualEnvFile !== null,
+    hasExample: actualExampleFile !== null,
+    envFile: actualEnvFile,
+    exampleFile: actualExampleFile,
+    keys,
+    missingCount,
+    matchedCount,
+    extraCount
+  };
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -1577,6 +1650,45 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ success: false, error: err.message }));
       }
     });
+    return;
+  }
+
+  
+  // 5. Env Drift Inspector
+  if (pathname === '/api/env-drift') {
+    const targetPath = url.searchParams.get('path');
+    try {
+      const result = await checkEnvDrift(targetPath);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/save-env' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { path: targetPath, content } = JSON.parse(body || '{}');
+        const envFile = path.join(targetPath, '.env');
+        await fsp.writeFile(envFile, content, 'utf-8');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Saved .env to ' + envFile }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/api/open-cockpit') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, message: 'Browser mode' }));
     return;
   }
 
