@@ -118,3 +118,40 @@ fn test_check_env_drift() {
     let _ = fs::remove_dir_all(&temp_dir);
     println!("test_check_env_drift passed successfully!");
 }
+#[test]
+fn test_laravel_php_detection() {
+    let temp_dir = std::env::temp_dir().join("test_laravel_app");
+    let _ = fs::create_dir_all(&temp_dir);
+    let _ = fs::write(temp_dir.join("artisan"), "#!/usr/bin/env php\n");
+    let _ = fs::write(temp_dir.join("package.json"), r#"{"scripts":{"dev":"vite","build":"vite build"}}"#);
+
+    let details = fs_scanner::get_project_details(&temp_dir.to_string_lossy());
+    assert!(details.success);
+    let det = details.details.unwrap();
+    assert_eq!(det.project_type, "PHP (Laravel)");
+    assert!(!det.scripts.is_empty());
+    assert_eq!(det.scripts[0].command, "php artisan serve");
+    assert_eq!(det.default_script.unwrap(), "php artisan serve");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    println!("test_laravel_php_detection passed successfully!");
+}
+#[test]
+fn test_monorepo_laravel_frontend_detection() {
+    let temp_dir = std::env::temp_dir().join("test_evac_monorepo");
+    let _ = fs::create_dir_all(temp_dir.join("backend"));
+    let _ = fs::create_dir_all(temp_dir.join("frontend").join("mobile"));
+    let _ = fs::write(temp_dir.join("backend").join("artisan"), "#!/usr/bin/env php\n");
+    let _ = fs::write(temp_dir.join("frontend").join("mobile").join("package.json"), r#"{"scripts":{"dev":"expo start"}}"#);
+
+    let details = fs_scanner::get_project_details(&temp_dir.to_string_lossy());
+    assert!(details.success);
+    let det = details.details.unwrap();
+    assert_eq!(det.project_type, "Fullstack / Monorepo");
+    assert!(!det.scripts.is_empty());
+    assert_eq!(det.scripts[0].command, "php artisan serve");
+    assert_eq!(det.default_script.unwrap(), "php artisan serve");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    println!("test_monorepo_laravel_frontend_detection passed successfully!");
+}

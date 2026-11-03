@@ -44,6 +44,8 @@ const IGNORED_NAMES = new Set([
 
 // Known project indicator files
 const PROJECT_INDICATORS = [
+  { file: 'artisan', type: 'PHP (Laravel)', icon: 'php' },
+  { file: 'composer.json', type: 'PHP', icon: 'php' },
   { file: 'package.json', type: 'Node.js', icon: 'node' },
   { file: 'server.js', type: 'Node.js (Express)', icon: 'node' },
   { file: 'Cargo.toml', type: 'Rust', icon: 'rust' },
@@ -57,8 +59,7 @@ const PROJECT_INDICATORS = [
   { file: 'pom.xml', type: 'Java', icon: 'java' },
   { file: '.git', type: 'Git Repo', icon: 'git' },
   { file: 'CMakeLists.txt', type: 'C/C++', icon: 'cpp' },
-  { file: 'docker-compose.yml', type: 'Docker', icon: 'docker' },
-  { file: 'composer.json', type: 'PHP', icon: 'php' }
+  { file: 'docker-compose.yml', type: 'Docker', icon: 'docker' }
 ];
 
 function isWslPath(p) {
@@ -202,12 +203,45 @@ async function getProjectDetails(dirPath) {
     if (hasPkg || hasServerJs || hasAppJs || hasIndexJs) {
       details.isProject = true;
       details.projectType = 'Node.js';
+      let isBackend = hasServerJs || hasAppJs;
+      let isFrontend = false;
+
       if (hasPkg) {
         try {
           const pkgData = JSON.parse(await fsp.readFile(path.join(dirPath, 'package.json'), 'utf-8'));
           if (pkgData.name) details.name = pkgData.name;
+
+          const backendIndicators = [
+            'express', 'fastify', '@nestjs/core', 'koa', 'hapi', 'apollo-server',
+            'socket.io', 'mongoose', 'prisma', 'typeorm', 'sequelize', 'pg', 'mysql2',
+            'redis', 'dotenv', 'cors', 'helmet', 'jsonwebtoken'
+          ];
+          const frontendIndicators = [
+            'react', 'react-dom', 'vue', 'vite', 'next', 'nuxt', '@angular/core',
+            'svelte', 'astro', 'remix', 'solid-js', 'gatsby'
+          ];
+
+          const checkDeps = (key) => {
+            const deps = pkgData[key] || {};
+            const b = backendIndicators.some(x => !!deps[x]);
+            const f = frontendIndicators.some(x => !!deps[x]);
+            return [b, f];
+          };
+
+          const [b1, f1] = checkDeps('dependencies');
+          const [b2, f2] = checkDeps('devDependencies');
+          if (b1 || b2) isBackend = true;
+          if (f1 || f2) isFrontend = true;
+
+          if (isBackend && !isFrontend) details.projectType = 'Node.js (Backend)';
+          else if (isFrontend && !isBackend) details.projectType = 'Node.js (Frontend)';
+          else if (isBackend && isFrontend) details.projectType = 'Fullstack (Node.js)';
+
           if (pkgData.scripts) {
-            const priority = ['dev', 'start', 'serve', 'build', 'test'];
+            const priority = isBackend && !isFrontend
+              ? ['server', 'api', 'backend', 'start:backend', 'dev:backend', 'start:server', 'dev:server', 'start', 'dev', 'serve', 'build']
+              : ['dev', 'start', 'serve', 'server', 'api', 'build', 'preview', 'test'];
+
             for (const s of priority) {
               if (pkgData.scripts[s]) {
                 details.scripts.push({ name: s, command: `npm run ${s}` });
@@ -224,11 +258,11 @@ async function getProjectDetails(dirPath) {
       }
 
       // Standalone Node/Express server fallbacks
-      const hasRunScript = details.scripts.some(s => s.name === 'dev' || s.name === 'start');
-      if (!hasRunScript) {
-        if (hasServerJs) details.scripts.push({ name: 'node server.js', command: 'node server.js' });
-        if (hasAppJs) details.scripts.push({ name: 'node app.js', command: 'node app.js' });
-        if (hasIndexJs) details.scripts.push({ name: 'node index.js', command: 'node index.js' });
+      const hasRunScript = details.scripts.some(s => s.name === 'server' || s.name === 'dev' || s.name === 'start');
+      if (!hasRunScript || (isBackend && !details.scripts.some(s => s.name.includes('server')))) {
+        if (hasServerJs) details.scripts.unshift({ name: 'node server.js', command: 'node server.js' });
+        if (hasAppJs && !details.scripts.some(s => s.name === 'node app.js')) details.scripts.push({ name: 'node app.js', command: 'node app.js' });
+        if (hasIndexJs && !details.scripts.some(s => s.name === 'node index.js')) details.scripts.push({ name: 'node index.js', command: 'node index.js' });
       }
     }
 
@@ -313,6 +347,48 @@ async function getProjectDetails(dirPath) {
       }
     }
 
+    // 4. PHP / Laravel (artisan, composer.json, index.php)
+    const hasArtisan = entries.includes('artisan');
+    const hasComposer = entries.includes('composer.json');
+    const hasIndexPhp = entries.includes('index.php') || fs.existsSync(path.join(dirPath, 'public', 'index.php'));
+
+    if (hasArtisan || hasComposer || hasIndexPhp) {
+      details.isProject = true;
+      const phpScripts = [];
+
+      if (hasArtisan) {
+        details.projectType = 'PHP (Laravel)';
+        phpScripts.push({ name: 'php artisan serve', command: 'php artisan serve' });
+        phpScripts.push({ name: 'php artisan migrate', command: 'php artisan migrate' });
+        phpScripts.push({ name: 'php artisan queue:work', command: 'php artisan queue:work' });
+      } else if (hasComposer) {
+        if (details.projectType === 'Folder') details.projectType = 'PHP';
+        try {
+          const compPkg = JSON.parse(await fsp.readFile(path.join(dirPath, 'composer.json'), 'utf-8'));
+          if (compPkg.scripts) {
+            for (const s of ['start', 'dev', 'serve', 'test']) {
+              if (compPkg.scripts[s]) {
+                phpScripts.push({ name: `composer ${s}`, command: `composer run ${s}` });
+              }
+            }
+          }
+        } catch {}
+        if (phpScripts.length === 0) {
+          if (fs.existsSync(path.join(dirPath, 'public', 'index.php'))) {
+            phpScripts.push({ name: 'php server (public)', command: 'php -S localhost:8000 -t public' });
+          } else if (entries.includes('index.php')) {
+            phpScripts.push({ name: 'php server', command: 'php -S localhost:8000' });
+          }
+        }
+      } else if (hasIndexPhp) {
+        if (details.projectType === 'Folder') details.projectType = 'PHP';
+        phpScripts.push({ name: 'php server', command: 'php -S localhost:8000' });
+      }
+
+      // Prepend PHP scripts so backend commands (artisan serve) take precedence over frontend asset watchers (e.g. Vite dev)
+      details.scripts.unshift(...phpScripts);
+    }
+
     // 4. Docker Compose
     if (entries.includes('docker-compose.yml') || entries.includes('compose.yaml')) {
       details.scripts.push({ name: 'docker up', command: 'docker compose up' });
@@ -323,59 +399,107 @@ async function getProjectDetails(dirPath) {
       details.scripts.push({ name: 'make', command: 'make' });
     }
 
-    // 6. Monorepo / Subfolder auto-detection: if no root scripts found, scan subfolders (e.g. frontend, backend, packages)
+    // 6. Monorepo / Subfolder auto-detection: if no root scripts found, scan subfolders (e.g. backend, frontend, apps, packages)
     if (details.scripts.length === 0) {
+      const backendSubScripts = [];
+      const frontendSubScripts = [];
+
+      const inspectSubDir = async (subName, targetDir) => {
+        try {
+          const subEntries = await fsp.readdir(targetDir);
+          
+          // 1. Laravel artisan
+          if (subEntries.includes('artisan')) {
+            backendSubScripts.push({
+              name: `${subName}: php artisan serve`,
+              command: 'php artisan serve',
+              cwd: targetDir
+            });
+            backendSubScripts.push({
+              name: `${subName}: php artisan migrate`,
+              command: 'php artisan migrate',
+              cwd: targetDir
+            });
+          }
+
+          // 2. Python manage.py
+          if (subEntries.includes('manage.py')) {
+            backendSubScripts.push({
+              name: `${subName}: python manage.py runserver`,
+              command: 'python manage.py runserver',
+              cwd: targetDir
+            });
+          }
+
+          // 3. Rust Cargo.toml
+          if (subEntries.includes('Cargo.toml')) {
+            backendSubScripts.push({
+              name: `${subName}: cargo run`,
+              command: 'cargo run',
+              cwd: targetDir
+            });
+          }
+
+          // 4. Node.js package.json
+          if (subEntries.includes('package.json')) {
+            try {
+              const subPkg = JSON.parse(await fsp.readFile(path.join(targetDir, 'package.json'), 'utf-8'));
+              if (subPkg.scripts) {
+                const isBackendDir = /backend|server|api/i.test(subName);
+                for (const s of ['server', 'dev', 'start', 'serve', 'build']) {
+                  if (subPkg.scripts[s]) {
+                    const item = {
+                      name: `${subName}: npm run ${s}`,
+                      command: `npm run ${s}`,
+                      cwd: targetDir
+                    };
+                    if (isBackendDir || s === 'server') {
+                      backendSubScripts.push(item);
+                    } else {
+                      frontendSubScripts.push(item);
+                    }
+                  }
+                }
+              }
+            } catch {}
+          }
+        } catch {}
+      };
+
       for (const entry of entries) {
         if (IGNORED_NAMES.has(entry) || entry.startsWith('.')) continue;
         const subPath = path.join(dirPath, entry);
         try {
           const st = await fsp.stat(subPath);
           if (st.isDirectory()) {
-            const subEntries = await fsp.readdir(subPath);
-            if (subEntries.includes('package.json')) {
-              try {
-                const subPkg = JSON.parse(await fsp.readFile(path.join(subPath, 'package.json'), 'utf-8'));
-                if (subPkg.scripts) {
-                  for (const s of ['dev', 'start', 'serve', 'build']) {
-                    if (subPkg.scripts[s]) {
-                      details.scripts.push({
-                        name: `${entry}: ${s}`,
-                        command: `npm run ${s}`,
-                        cwd: subPath
-                      });
-                    }
-                  }
-                }
-              } catch {}
-            } else {
-              // Check 1 level deeper (e.g. frontend/AccommoTrackWeb)
-              for (const sub2 of subEntries) {
-                if (IGNORED_NAMES.has(sub2) || sub2.startsWith('.')) continue;
-                const sub2Path = path.join(subPath, sub2);
+            await inspectSubDir(entry, subPath);
+
+            // Also inspect nested subfolders (e.g. frontend/Evac_RouteWeb, frontend/Evac_RouteMobile, apps/web)
+            const lower = entry.toLowerCase();
+            if (lower === 'frontend' || lower === 'apps' || lower === 'packages' || lower === 'services' || lower === 'modules') {
+              const nested = await fsp.readdir(subPath);
+              for (const nest of nested) {
+                if (IGNORED_NAMES.has(nest) || nest.startsWith('.')) continue;
+                const nestPath = path.join(subPath, nest);
                 try {
-                  const st2 = await fsp.stat(sub2Path);
-                  if (st2.isDirectory()) {
-                    const sub2Entries = await fsp.readdir(sub2Path);
-                    if (sub2Entries.includes('package.json')) {
-                      const sub2Pkg = JSON.parse(await fsp.readFile(path.join(sub2Path, 'package.json'), 'utf-8'));
-                      if (sub2Pkg.scripts) {
-                        for (const s of ['dev', 'start', 'serve', 'build']) {
-                          if (sub2Pkg.scripts[s]) {
-                            details.scripts.push({
-                              name: `${sub2}: ${s}`,
-                              command: `npm run ${s}`,
-                              cwd: sub2Path
-                            });
-                          }
-                        }
-                      }
-                    }
+                  const nestSt = await fsp.stat(nestPath);
+                  if (nestSt.isDirectory()) {
+                    await inspectSubDir(nest, nestPath);
                   }
                 } catch {}
               }
             }
           }
         } catch {}
+      }
+
+      // Prioritize backend scripts first, followed by frontend scripts
+      details.scripts.push(...backendSubScripts, ...frontendSubScripts);
+      if (details.scripts.length > 0) {
+        details.isProject = true;
+        if (details.projectType === 'Folder') {
+          details.projectType = 'Fullstack / Monorepo';
+        }
       }
     }
 

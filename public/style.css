@@ -484,7 +484,7 @@ body {
   color: #0f172a;
 }
 
-/* Project Docked Context Bar with Horizontal Slide Minimization */
+/* Project Docked Context Bar with Responsive Flow */
 .project-docked-bar {
   display: flex;
   align-items: center;
@@ -495,13 +495,20 @@ body {
   transition: width 0.36s cubic-bezier(0.16, 1, 0.3, 1),
               max-width 0.36s cubic-bezier(0.16, 1, 0.3, 1),
               padding 0.3s ease;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.project-docked-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .project-info-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: fit-content;
   flex-shrink: 0;
 }
 
@@ -510,10 +517,11 @@ body {
   display: flex;
   align-items: center;
   gap: 3px;
-  max-width: 400px;
+  max-width: 280px;
   overflow-x: auto;
   scrollbar-width: none;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .proj-breadcrumb-nav::-webkit-scrollbar {
@@ -535,6 +543,10 @@ body {
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .crumb-btn:hover {
@@ -616,8 +628,9 @@ body {
 .project-tools-group {
   display: flex;
   align-items: center;
-  gap: 6px;
-  max-width: 1000px;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-left: 0;
   opacity: 1;
   transform: translateX(0);
   transition: max-width 0.45s cubic-bezier(0.16, 1, 0.3, 1),
@@ -754,6 +767,37 @@ body {
 .proj-tool-btn.code-btn:hover {
   border-color: #3b82f6;
   color: #2563eb;
+}
+
+/* Responsive adjustments for top bar in project tabs */
+@media (max-width: 1680px) {
+  .proj-tool-btn span:not(#btnStartServerText):not(#consoleBtnLabel) {
+    display: none;
+  }
+  .proj-tool-btn {
+    padding: 0 8px;
+  }
+  .proj-breadcrumb-nav {
+    max-width: 260px;
+  }
+}
+
+@media (max-width: 1300px) {
+  .path-chip-btn .chip-lbl {
+    display: none;
+  }
+  .proj-breadcrumb-nav {
+    max-width: 200px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .path-chips-group {
+    display: none;
+  }
+  .proj-breadcrumb-nav {
+    max-width: 160px;
+  }
 }
 
 /* Canvas Area */

@@ -43,6 +43,8 @@ pub struct ProjectIndicator {
 }
 
 pub const PROJECT_INDICATORS: &[ProjectIndicator] = &[
+    ProjectIndicator { file: "artisan", ptype: "PHP (Laravel)", icon: "php" },
+    ProjectIndicator { file: "composer.json", ptype: "PHP", icon: "php" },
     ProjectIndicator { file: "package.json", ptype: "Node.js", icon: "node" },
     ProjectIndicator { file: "Cargo.toml", ptype: "Rust", icon: "rust" },
     ProjectIndicator { file: "pyproject.toml", ptype: "Python", icon: "python" },
@@ -360,6 +362,80 @@ pub fn browse_directory(
     }
 }
 
+fn inspect_sub_dir(
+    name: &str,
+    dir: &Path,
+    b_scripts: &mut Vec<ScriptItem>,
+    f_scripts: &mut Vec<ScriptItem>,
+) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        let mut sub_set = HashSet::new();
+        for e in entries.flatten() {
+            sub_set.insert(e.file_name().to_string_lossy().to_string());
+        }
+
+        // 1. Laravel artisan
+        if sub_set.contains("artisan") {
+            b_scripts.push(ScriptItem {
+                name: format!("{}: php artisan serve", name),
+                command: "php artisan serve".to_string(),
+                cwd: Some(dir.to_string_lossy().to_string()),
+            });
+            b_scripts.push(ScriptItem {
+                name: format!("{}: php artisan migrate", name),
+                command: "php artisan migrate".to_string(),
+                cwd: Some(dir.to_string_lossy().to_string()),
+            });
+        }
+
+        // 2. Python manage.py
+        if sub_set.contains("manage.py") {
+            b_scripts.push(ScriptItem {
+                name: format!("{}: python manage.py runserver", name),
+                command: "python manage.py runserver".to_string(),
+                cwd: Some(dir.to_string_lossy().to_string()),
+            });
+        }
+
+        // 3. Rust Cargo.toml
+        if sub_set.contains("Cargo.toml") {
+            b_scripts.push(ScriptItem {
+                name: format!("{}: cargo run", name),
+                command: "cargo run".to_string(),
+                cwd: Some(dir.to_string_lossy().to_string()),
+            });
+        }
+
+        // 4. Node.js package.json
+        if sub_set.contains("package.json") {
+            if let Ok(content) = fs::read_to_string(dir.join("package.json")) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(s_map) = val.get("scripts").and_then(|v| v.as_object()) {
+                        let lower_name = name.to_lowercase();
+                        let is_backend = lower_name.contains("backend")
+                            || lower_name.contains("server")
+                            || lower_name.contains("api");
+                        for &s in &["server", "dev", "start", "serve", "build"] {
+                            if s_map.contains_key(s) {
+                                let item = ScriptItem {
+                                    name: format!("{}: npm run {}", name, s),
+                                    command: format!("npm run {}", s),
+                                    cwd: Some(dir.to_string_lossy().to_string()),
+                                };
+                                if is_backend || s == "server" {
+                                    b_scripts.push(item);
+                                } else {
+                                    f_scripts.push(item);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
     let p = Path::new(dir_path);
     let name = p
@@ -404,16 +480,63 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
     if has_pkg || has_server_js || has_app_js || has_index_js {
         details.is_project = true;
         details.project_type = "Node.js".to_string();
+        let mut is_backend = has_server_js || has_app_js;
+        let mut is_frontend = false;
+
         if has_pkg {
             if let Ok(content) = fs::read_to_string(p.join("package.json")) {
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                     if let Some(pkg_name) = val.get("name").and_then(|v| v.as_str()) {
                         details.name = pkg_name.to_string();
                     }
+
+                    // Smart detection: Inspect dependencies for Backend vs Frontend packages
+                    let backend_indicators = [
+                        "express", "fastify", "@nestjs/core", "koa", "hapi", "apollo-server",
+                        "socket.io", "mongoose", "prisma", "typeorm", "sequelize", "pg", "mysql2",
+                        "redis", "dotenv", "cors", "helmet", "jsonwebtoken"
+                    ];
+                    let frontend_indicators = [
+                        "react", "react-dom", "vue", "vite", "next", "nuxt", "@angular/core",
+                        "svelte", "astro", "remix", "solid-js", "gatsby"
+                    ];
+
+                    let check_deps = |key: &str| -> (bool, bool) {
+                        let mut b = false;
+                        let mut f = false;
+                        if let Some(deps) = val.get(key).and_then(|v| v.as_object()) {
+                            for ind in &backend_indicators {
+                                if deps.contains_key(*ind) { b = true; break; }
+                            }
+                            for ind in &frontend_indicators {
+                                if deps.contains_key(*ind) { f = true; break; }
+                            }
+                        }
+                        (b, f)
+                    };
+
+                    let (b1, f1) = check_deps("dependencies");
+                    let (b2, f2) = check_deps("devDependencies");
+                    if b1 || b2 { is_backend = true; }
+                    if f1 || f2 { is_frontend = true; }
+
+                    if is_backend && !is_frontend {
+                        details.project_type = "Node.js (Backend)".to_string();
+                    } else if is_frontend && !is_backend {
+                        details.project_type = "Node.js (Frontend)".to_string();
+                    } else if is_backend && is_frontend {
+                        details.project_type = "Fullstack (Node.js)".to_string();
+                    }
+
                     if let Some(scripts) = val.get("scripts").and_then(|v| v.as_object()) {
-                        let priority = ["dev", "start", "serve", "build", "test"];
+                        let priority: &[&str] = if is_backend && !is_frontend {
+                            &["server", "api", "backend", "start:backend", "dev:backend", "start:server", "dev:server", "start", "dev", "serve", "build"]
+                        } else {
+                            &["dev", "start", "serve", "server", "api", "build", "preview", "test"]
+                        };
+
                         for s in priority {
-                            if scripts.contains_key(s) {
+                            if scripts.contains_key(*s) {
                                 details.scripts.push(ScriptItem {
                                     name: s.to_string(),
                                     command: format!("npm run {}", s),
@@ -435,24 +558,24 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
             }
         }
 
-        // Express / Node standalone fallbacks if no dev/start script exists
-        let has_run_script = details.scripts.iter().any(|s| s.name == "dev" || s.name == "start");
-        if !has_run_script {
+        // Standalone Node/Express server fallbacks
+        let has_run_script = details.scripts.iter().any(|s| s.name == "server" || s.name == "dev" || s.name == "start");
+        if !has_run_script || (is_backend && !details.scripts.iter().any(|s| s.name.contains("server"))) {
             if has_server_js {
-                details.scripts.push(ScriptItem {
+                details.scripts.insert(0, ScriptItem {
                     name: "node server.js".to_string(),
                     command: "node server.js".to_string(),
                     cwd: None,
                 });
             }
-            if has_app_js {
+            if has_app_js && !details.scripts.iter().any(|s| s.name == "node app.js") {
                 details.scripts.push(ScriptItem {
                     name: "node app.js".to_string(),
                     command: "node app.js".to_string(),
                     cwd: None,
                 });
             }
-            if has_index_js {
+            if has_index_js && !details.scripts.iter().any(|s| s.name == "node index.js") {
                 details.scripts.push(ScriptItem {
                     name: "node index.js".to_string(),
                     command: "node index.js".to_string(),
@@ -498,13 +621,7 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
 
     if is_python {
         details.is_project = true;
-        if details.project_type == "Folder" {
-            details.project_type = if entry_set.contains("manage.py") {
-                "Python (Django)".to_string()
-            } else {
-                "Python".to_string()
-            };
-        }
+        let mut py_scripts = Vec::new();
 
         let is_wsl = is_wsl_path(dir_path);
         // Detect virtualenv (.venv or venv)
@@ -524,20 +641,6 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
             "python -u"
         };
 
-        // Django
-        if entry_set.contains("manage.py") {
-            details.scripts.push(ScriptItem {
-                name: "django runserver".to_string(),
-                command: format!("{} manage.py runserver", py_bin),
-                cwd: None,
-            });
-            details.scripts.push(ScriptItem {
-                name: "django migrate".to_string(),
-                command: format!("{} manage.py migrate", py_bin),
-                cwd: None,
-            });
-        }
-
         // FastAPI / Uvicorn check
         let is_fastapi = ["main.py", "app.py", "api.py", "server.py"].iter().any(|f| {
             if entry_set.contains(*f) {
@@ -548,7 +651,21 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
             false
         });
 
-        if is_fastapi {
+        // Django
+        if entry_set.contains("manage.py") {
+            details.project_type = "Python (Django)".to_string();
+            py_scripts.push(ScriptItem {
+                name: "django runserver".to_string(),
+                command: format!("{} manage.py runserver", py_bin),
+                cwd: None,
+            });
+            py_scripts.push(ScriptItem {
+                name: "django migrate".to_string(),
+                command: format!("{} manage.py migrate", py_bin),
+                cwd: None,
+            });
+        } else if is_fastapi {
+            details.project_type = "Python (FastAPI)".to_string();
             let entry_mod = if entry_set.contains("main.py") {
                 "main"
             } else if entry_set.contains("app.py") {
@@ -556,16 +673,18 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
             } else {
                 "api"
             };
-            details.scripts.push(ScriptItem {
+            py_scripts.push(ScriptItem {
                 name: "fastapi dev (uvicorn)".to_string(),
                 command: format!("uvicorn {}:app --reload", entry_mod),
                 cwd: None,
             });
+        } else if details.project_type == "Folder" {
+            details.project_type = "Python".to_string();
         }
 
         // Streamlit
         if entry_set.contains("streamlit_app.py") {
-            details.scripts.push(ScriptItem {
+            py_scripts.push(ScriptItem {
                 name: "streamlit run".to_string(),
                 command: "streamlit run streamlit_app.py".to_string(),
                 cwd: None,
@@ -576,8 +695,8 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
         for file in ["main.py", "app.py", "server.py", "run.py", "api.py", "bot.py"] {
             if entry_set.contains(file) {
                 let script_cmd = format!("{} {}", py_bin, file);
-                if !details.scripts.iter().any(|s| s.command == script_cmd) {
-                    details.scripts.push(ScriptItem {
+                if !py_scripts.iter().any(|s| s.command == script_cmd) && !details.scripts.iter().any(|s| s.command == script_cmd) {
+                    py_scripts.push(ScriptItem {
                         name: format!("run {}", file),
                         command: script_cmd,
                         cwd: None,
@@ -588,15 +707,93 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
 
         // Poetry
         if entry_set.contains("poetry.lock") {
-            details.scripts.push(ScriptItem {
+            py_scripts.push(ScriptItem {
                 name: "poetry run".to_string(),
                 command: "poetry run python main.py".to_string(),
                 cwd: None,
             });
         }
+
+        // Insert Python scripts at the front so backend commands take precedence
+        details.scripts.splice(0..0, py_scripts);
     }
 
-    // 4. Docker Compose
+    // 4. PHP / Laravel (artisan, composer.json, index.php)
+    let has_artisan = entry_set.contains("artisan");
+    let has_composer = entry_set.contains("composer.json");
+    let has_index_php = entry_set.contains("index.php") || p.join("public").join("index.php").exists();
+
+    if has_artisan || has_composer || has_index_php {
+        details.is_project = true;
+        let mut php_scripts = Vec::new();
+
+        if has_artisan {
+            details.project_type = "PHP (Laravel)".to_string();
+            php_scripts.push(ScriptItem {
+                name: "php artisan serve".to_string(),
+                command: "php artisan serve".to_string(),
+                cwd: None,
+            });
+            php_scripts.push(ScriptItem {
+                name: "php artisan migrate".to_string(),
+                command: "php artisan migrate".to_string(),
+                cwd: None,
+            });
+            php_scripts.push(ScriptItem {
+                name: "php artisan queue:work".to_string(),
+                command: "php artisan queue:work".to_string(),
+                cwd: None,
+            });
+        } else if has_composer {
+            if details.project_type == "Folder" {
+                details.project_type = "PHP".to_string();
+            }
+            if let Ok(comp_content) = fs::read_to_string(p.join("composer.json")) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&comp_content) {
+                    if let Some(scripts) = val.get("scripts").and_then(|v| v.as_object()) {
+                        for &s in &["start", "dev", "serve", "test"] {
+                            if scripts.contains_key(s) {
+                                php_scripts.push(ScriptItem {
+                                    name: format!("composer {}", s),
+                                    command: format!("composer run {}", s),
+                                    cwd: None,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            if php_scripts.is_empty() {
+                if p.join("public").join("index.php").exists() {
+                    php_scripts.push(ScriptItem {
+                        name: "php server (public)".to_string(),
+                        command: "php -S localhost:8000 -t public".to_string(),
+                        cwd: None,
+                    });
+                } else if entry_set.contains("index.php") {
+                    php_scripts.push(ScriptItem {
+                        name: "php server".to_string(),
+                        command: "php -S localhost:8000".to_string(),
+                        cwd: None,
+                    });
+                }
+            }
+        } else if has_index_php {
+            if details.project_type == "Folder" {
+                details.project_type = "PHP".to_string();
+            }
+            php_scripts.push(ScriptItem {
+                name: "php server".to_string(),
+                command: "php -S localhost:8000".to_string(),
+                cwd: None,
+            });
+        }
+
+        // Prepend PHP scripts so backend commands (artisan serve) take precedence over frontend asset watchers (Vite dev)
+        details.scripts.splice(0..0, php_scripts);
+    }
+
+    // 5. Docker Compose
     if entry_set.contains("docker-compose.yml") || entry_set.contains("compose.yaml") {
         details.scripts.push(ScriptItem {
             name: "docker up".to_string(),
@@ -605,8 +802,11 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
         });
     }
 
-    // 5. Monorepo subfolders scanning (if no root scripts)
+    // 6. Monorepo subfolders scanning (if no root scripts)
     if details.scripts.is_empty() {
+        let mut backend_sub_scripts = Vec::new();
+        let mut frontend_sub_scripts = Vec::new();
+
         if let Ok(sub_entries) = fs::read_dir(p) {
             for sub in sub_entries.flatten() {
                 let sub_name = sub.file_name().to_string_lossy().to_string();
@@ -615,26 +815,36 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
                 }
                 let sub_path = sub.path();
                 if sub_path.is_dir() {
-                    let pkg_json = sub_path.join("package.json");
-                    if pkg_json.exists() {
-                        if let Ok(content) = fs::read_to_string(&pkg_json) {
-                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                                if let Some(scripts) = val.get("scripts").and_then(|v| v.as_object()) {
-                                    for s in ["dev", "start", "serve", "build"] {
-                                        if scripts.contains_key(s) {
-                                            details.scripts.push(ScriptItem {
-                                                name: format!("{}: {}", sub_name, s),
-                                                command: format!("npm run {}", s),
-                                                cwd: Some(sub_path.to_string_lossy().to_string()),
-                                            });
-                                        }
-                                    }
+                    inspect_sub_dir(&sub_name, &sub_path, &mut backend_sub_scripts, &mut frontend_sub_scripts);
+
+                    let lower = sub_name.to_lowercase();
+                    if lower == "frontend" || lower == "apps" || lower == "packages" || lower == "services" || lower == "modules" {
+                        if let Ok(nest_entries) = fs::read_dir(&sub_path) {
+                            for nest in nest_entries.flatten() {
+                                let nest_name = nest.file_name().to_string_lossy().to_string();
+                                if nest_name.starts_with('.') || IGNORED_NAMES.contains(&nest_name.as_str()) {
+                                    continue;
+                                }
+                                let nest_path = nest.path();
+                                if nest_path.is_dir() {
+                                    inspect_sub_dir(&nest_name, &nest_path, &mut backend_sub_scripts, &mut frontend_sub_scripts);
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+
+        let mut all_scripts = backend_sub_scripts;
+        all_scripts.extend(frontend_sub_scripts);
+
+        if !all_scripts.is_empty() {
+            details.is_project = true;
+            if details.project_type == "Folder" {
+                details.project_type = "Fullstack / Monorepo".to_string();
+            }
+            details.scripts = all_scripts;
         }
     }
 

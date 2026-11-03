@@ -781,6 +781,7 @@ async function switchToProjectTab(tab) {
   // Hide main view bar, show project docked bar
   mainViewBar.classList.add('hidden');
   projectActionBar.classList.remove('hidden');
+  setToolsMinimized(false);
   homeLegend.classList.add('hidden');
 
   const tabOs = tab.os || detectOsFromPath(tab.path, 'windows');
@@ -859,36 +860,63 @@ async function loadProjectScripts(projectPath) {
     if (data.success && data.details && data.details.scripts && data.details.scripts.length > 0) {
       const scripts = data.details.scripts;
 
-      // Populate dropdown with data-cwd support + Custom Command option
-      const scriptOptions = scripts.map(s => `
-        <option value="${s.command}" data-cwd="${s.cwd || ''}">${s.name} (${s.command})</option>
-      `).join('');
-      scriptSelect.innerHTML = scriptOptions + `<option value="__custom__">⚙️ Custom command...</option>`;
-
-      scriptSelect.classList.remove('hidden');
       const projKey = normalizePathKey(projectPath);
+      const savedCmd = localStorage.getItem('workspace_cmd_' + projKey);
+
+      let hasSelected = false;
+      const scriptOptions = scripts.map(s => {
+        let isSel = false;
+        if (savedCmd && s.command === savedCmd) {
+          isSel = true;
+          hasSelected = true;
+        } else if (!savedCmd && !hasSelected && s.command === data.details.defaultScript) {
+          isSel = true;
+          hasSelected = true;
+        }
+        return `<option value="${s.command}" data-cwd="${s.cwd || ''}" ${isSel ? 'selected' : ''}>${s.name} (${s.command})</option>`;
+      }).join('');
+
+      let customSavedOpt = '';
+      if (savedCmd && !hasSelected) {
+        customSavedOpt = `<option value="${savedCmd}" selected>Custom: ${savedCmd}</option>`;
+      }
+
+      scriptSelect.innerHTML = customSavedOpt + scriptOptions + `<option value="__custom__">⚙️ Custom command...</option>`;
+      scriptSelect.classList.remove('hidden');
+
       const isRunning = allRunningServers.some(s => s.id === projKey);
       if (isRunning) {
         btnStartServerText.textContent = 'Server Running';
       } else {
-        const firstShort = scripts[0].name.split(':')[0];
-        btnStartServerText.textContent = `Run: ${firstShort}`;
+        const chosen = scriptSelect.value;
+        const selected = scripts.find(s => s.command === chosen);
+        btnStartServerText.textContent = selected ? `Run: ${selected.name.split(':')[0]}` : (chosen ? 'Run Server' : 'Run: dev');
       }
 
       scriptSelect.onchange = () => {
-        const projKey = normalizePathKey(projectPath);
         const isRunning = allRunningServers.some(s => s.id === projKey);
-        if (isRunning) {
-          btnStartServerText.textContent = 'Server Running';
-        } else {
-          if (scriptSelect.value === '__custom__') {
-            btnStartServerText.textContent = 'Run Custom...';
+        if (scriptSelect.value === '__custom__') {
+          const customCmd = prompt('Enter custom terminal command to run for this project:', '');
+          if (customCmd && customCmd.trim()) {
+            const raw = customCmd.trim();
+            const opt = document.createElement('option');
+            opt.value = raw;
+            opt.textContent = `Custom: ${raw}`;
+            opt.selected = true;
+            scriptSelect.insertBefore(opt, scriptSelect.firstChild);
+            scriptSelect.value = raw;
+            localStorage.setItem('workspace_cmd_' + projKey, raw);
+            btnStartServerText.textContent = 'Run Custom';
           } else {
-            const selected = scripts.find(s => s.command === scriptSelect.value);
-            if (selected) {
-              btnStartServerText.textContent = `Run: ${selected.name.split(':')[0]}`;
-            }
+            scriptSelect.selectedIndex = 0;
           }
+          return;
+        }
+
+        localStorage.setItem('workspace_cmd_' + projKey, scriptSelect.value);
+        if (!isRunning) {
+          const selected = scripts.find(s => s.command === scriptSelect.value);
+          btnStartServerText.textContent = selected ? `Run: ${selected.name.split(':')[0]}` : 'Run Server';
         }
       };
     } else {
@@ -2802,9 +2830,8 @@ if (btnToggleTools) btnToggleTools.addEventListener('click', toggleTools);
 if (btnHideToolbarMain) btnHideToolbarMain.addEventListener('click', () => setToolbarCollapsed(true));
 if (btnHideToolbarProj) btnHideToolbarProj.addEventListener('click', () => setToolsMinimized(true));
 
-if (localStorage.getItem('workspace_tools_minimized') === 'true') {
-  setToolsMinimized(true);
-}
+// Ensure tools are visible by default
+setToolsMinimized(false);
 if (localStorage.getItem('workspace_dock_collapsed') === 'true') {
   setToolbarCollapsed(true);
 }
