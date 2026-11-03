@@ -1,0 +1,27 @@
+{
+  "name": "workspace-tree",
+  "version": "1.0.0",
+  "description": "Smooth animated dual-branch visual workspace navigator for Windows and Ubuntu",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "tauri": "tauri"
+  },
+  "keywords": [
+    "workspace",
+    "tree",
+    "wsl",
+    "ubuntu",
+    "windows",
+    "canvas",
+    "visualizer"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

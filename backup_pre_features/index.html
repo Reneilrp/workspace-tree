@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workspace Tree • Dual OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=4">
+</head>
+<body class="cursor-custom">
+  <!-- Custom Trailing Cursor Elements -->
+  <div id="customCursorDot" class="cursor-dot"></div>
+  <div id="customCursorRing" class="cursor-ring"></div>
+
+  <!-- Fixed Header System: Permanent Tab Strip + Collapsible Docked Bar -->
+  <header class="app-header" id="appHeader">
+    <!-- 1. Permanent Global Tab Strip (Never Collapsed) -->
+    <div class="tabs-bar" id="tabsBar">
+      <div class="tabs-scroll-area" id="tabsScrollArea">
+        <button class="tab-item active" id="tabHome" data-tab-id="home">
+          <span class="tab-icon">🏠</span>
+          <span class="tab-title">Main View</span>
+        </button>
+        <div id="dynamicTabs" class="dynamic-tabs"></div>
+      </div>
+    </div>
+
+    <!-- 2. Collapsible Docked Action Bars (Slides in & out under Tab Bar) -->
+    <div id="collapsibleDockWrapper" class="collapsible-dock-wrapper">
+      <!-- 2A. Main View Docked Bar (Visible ONLY on Main View) -->
+      <div id="mainViewBar" class="context-docked-bar main-docked-bar">
+        <!-- App Brand -->
+        <div class="brand">
+          <div class="brand-icon">
+            <span class="dot win-dot"></span>
+            <span class="dot ubuntu-dot"></span>
+          </div>
+          <div class="brand-text">
+            <h1>Workspace Tree</h1>
+            <span class="badge">Port 7337</span>
+          </div>
+        </div>
+
+        <!-- Live Global Search -->
+        <div class="search-container">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Search projects across Windows & Ubuntu (Ctrl+K)..." autocomplete="off">
+          <div id="searchResults" class="search-dropdown hidden"></div>
+        </div>
+
+        <!-- Quick View Filter -->
+        <div class="view-filter-group" id="mainViewFilterGroup">
+          <button id="btnFilterProjects" class="filter-pill-btn active" title="Show only coding projects (Node.js, Python, Rust, Git, Docker, etc.)">
+            <span class="filter-icon">⚡</span>
+            <span>Projects Only</span>
+          </button>
+          <button id="btnFilterAll" class="filter-pill-btn" title="Show all folders (including OS user folders like Music, Contacts, Documents)">
+            <span class="filter-icon">📁</span>
+            <span>All Folders</span>
+          </button>
+        </div>
+
+        <!-- Viewport & Canvas Controls -->
+        <div class="controls-group">
+          <!-- Active Running Servers Badge (Main View) -->
+          <button id="btnMainLiveServers" class="ctrl-btn servers-badge-btn hidden" title="View Active Running Project Servers">
+            <span class="live-dot"></span>
+            <span id="mainServersCountText">0 Servers</span>
+          </button>
+          <button id="btnZoomIn" class="ctrl-btn" title="Zoom In (+)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <span id="zoomLabel" class="zoom-indicator">100%</span>
+          <button id="btnZoomOut" class="ctrl-btn" title="Zoom Out (-)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button id="btnResetView" class="ctrl-btn" title="Recenter View (Ctrl+R)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+            <span>Recenter</span>
+          </button>
+          <button id="btnOpenSettings" class="ctrl-btn primary" title="Settings & Share (Ctrl+,)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span>Settings</span>
+          </button>
+          <button id="btnHideToolbarMain" class="ctrl-btn icon-only" title="Hide Toolbar (Ctrl+B)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2B. Project Tab Docked Bar (Visible ONLY on Project Tabs) -->
+      <div id="projectActionBar" class="context-docked-bar project-docked-bar hidden">
+        <!-- Project Context Information with Scoped Breadcrumb Navigation -->
+        <div class="project-info-group">
+          <span id="projOsBadge" class="os-badge ubuntu">UBUNTU</span>
+          <div id="projBreadcrumbNav" class="proj-breadcrumb-nav">
+            <span class="crumb-btn active" id="projActiveTitle">Project Name</span>
+          </div>
+          <button id="btnCopyPath" class="proj-tool-btn copy-btn" title="Copy Path to Clipboard">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span id="btnCopyPathText">Copy Path</span>
+          </button>
+          <button id="btnToggleTools" class="proj-tool-btn icon-only toggle-tools-btn" title="Slide Tools (Ctrl+B)">
+            <svg id="toggleToolsIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+        </div>
+
+        <!-- Docked Project Actions Group (Slides in/out to minimize) -->
+        <div class="project-tools-group" id="projectToolsGroup">
+          <!-- Developer Tools -->
+          <div class="script-runner-box">
+            <select id="scriptSelect" class="script-select hidden"></select>
+            <button id="btnStartServer" class="proj-tool-btn run-btn" title="Start Dev Server (Ctrl+S)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span id="btnStartServerText">Start Server</span>
+            </button>
+          </div>
+
+          <button id="btnToggleDevConsole" class="proj-tool-btn console-toggle-btn" title="Toggle In-App Dev Console">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            <span id="consoleBtnLabel">Console</span>
+          </button>
+
+          <button id="btnProjectTerminal" class="proj-tool-btn terminal-btn" title="Open Terminal (Ctrl+`)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+            <span>Terminal</span>
+          </button>
+
+          <button id="btnProjectCode" class="proj-tool-btn code-btn" title="Open in VS Code (Ctrl+Shift+C)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+            <span>VS Code</span>
+          </button>
+
+          <button id="btnProjectExplorer" class="proj-tool-btn explorer-btn" title="Open in File Explorer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span>Explorer</span>
+          </button>
+
+          <div class="bar-divider"></div>
+
+          <!-- Canvas & Hierarchy Tools -->
+          <button id="btnExpandCollapseAll" class="proj-tool-btn" title="Expand or Collapse All Folders (Ctrl+E)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"></polyline><polyline points="7 6 12 11 17 6"></polyline></svg>
+            <span id="btnExpandCollapseText">Expand All</span>
+          </button>
+
+          <button id="btnZoomToFit" class="proj-tool-btn" title="Zoom to Fit Entire Tree on Screen (Ctrl+F)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+            <span>Fit View</span>
+          </button>
+
+          <button id="btnProjectRecenter" class="proj-tool-btn primary" title="Recenter View (Ctrl+R)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+            <span>Recenter</span>
+          </button>
+
+          <button id="btnProjectSettings" class="proj-tool-btn" title="Settings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </button>
+
+          <button id="btnHideToolbarProj" class="proj-tool-btn icon-only" title="Hide Toolbar (Ctrl+B)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Interactive Canvas -->
+  <main class="canvas-wrapper">
+    <canvas id="treeCanvas"></canvas>
+    
+    <!-- Legend / Quick Jump Pill (Shown on Home View) -->
+    <div id="homeLegend" class="legend-panel">
+      <button id="jumpUbuntu" class="legend-chip ubuntu">
+        <span class="chip-dot"></span>
+        <span>Ubuntu (WSL)</span>
+      </button>
+      <button id="jumpWin" class="legend-chip windows">
+        <span class="chip-dot"></span>
+        <span>Windows</span>
+      </button>
+      <div class="keyboard-hint">Double-click any project to open in an isolated Tab • Ctrl+B to toggle bars</div>
+    </div>
+
+    <!-- Node Action Inspector Card -->
+    <div id="inspectorCard" class="inspector-card hidden">
+      <div class="inspector-header">
+        <div class="inspector-tag-row">
+          <span id="inspOsTag" class="os-badge">OS</span>
+          <span id="inspTypeTag" class="type-badge">Project</span>
+        </div>
+        <button id="inspCloseBtn" class="close-btn">&times;</button>
+      </div>
+
+      <h3 id="inspName" class="inspector-title">Project Name</h3>
+      <p id="inspPath" class="inspector-path">C:\Users\...</p>
+
+      <div class="inspector-actions">
+        <button id="btnOpenTab" class="action-btn action-tab" title="Open in Dedicated Tab">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          <span id="btnOpenTabText">Open Tab</span>
+        </button>
+        <button id="btnFocusView" class="action-btn action-focus" title="Focus in Current View">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+          <span>Focus View</span>
+        </button>
+        <button id="btnViewFile" class="action-btn action-view-file hidden" title="View File Content">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          <span>View File</span>
+        </button>
+        <button id="btnOpenCode" class="action-btn action-code">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          <span>VS Code</span>
+        </button>
+        <button id="btnOpenExplorer" class="action-btn action-explorer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <span>Explorer</span>
+        </button>
+        <button id="btnOpenTerminal" class="action-btn action-terminal">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+          <span>Terminal</span>
+        </button>
+      </div>
+      <div id="inspStatus" class="inspector-status hidden"></div>
+    </div>
+
+    <!-- Settings & Share Modal -->
+    <div id="settingsModal" class="modal-backdrop hidden">
+      <div class="settings-modal-card">
+        <div class="settings-modal-header">
+          <div class="modal-title-group">
+            <span class="modal-icon">⚙️</span>
+            <div>
+              <h3>Workspace Settings</h3>
+              <p>Configure shortcuts, custom cursor, canvas appearance, and sharing</p>
+            </div>
+          </div>
+          <button id="btnCloseSettings" class="close-btn">&times;</button>
+        </div>
+
+        <div class="settings-modal-body">
+          <!-- Card 1: Configurable Keyboard Shortcuts -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-left">
+                <span class="card-header-icon">⌨️</span>
+                <div>
+                  <h4>Keyboard Shortcuts</h4>
+                  <p class="card-header-sub">Click any badge to rebind key combinations</p>
+                </div>
+              </div>
+              <button id="btnResetShortcuts" class="reset-link-btn">Reset Defaults</button>
+            </div>
+            <div class="settings-card-body">
+              <div class="shortcuts-list" id="shortcutsList">
+                <!-- Dynamically populated shortcut rows -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Custom Cursor -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-left">
+                <span class="card-header-icon">🎯</span>
+                <div>
+                  <h4>Custom Trailing Cursor</h4>
+                  <p class="card-header-sub">Customize mouse cursor style and magnetic trail</p>
+                </div>
+              </div>
+            </div>
+            <div class="settings-card-body">
+              <div class="setting-row">
+                <label>Cursor Style</label>
+                <div class="pill-options" id="cursorStyleOptions">
+                  <button class="pill-opt active" data-style="ring-dot">Ring & Dot</button>
+                  <button class="pill-opt" data-style="glow-orb">Glow Aura</button>
+                  <button class="pill-opt" data-style="precision">Precision Cross</button>
+                  <button class="pill-opt" data-style="system">System Default</button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label>Cursor Color Accent</label>
+                <div class="color-palette" id="cursorColorPalette">
+                  <button class="color-dot active" data-color="#0f172a" style="background:#0f172a" title="Charcoal"></button>
+                  <button class="color-dot" data-color="#0284c7" style="background:#0284c7" title="Windows Cyan"></button>
+                  <button class="color-dot" data-color="#e95420" style="background:#e95420" title="Ubuntu Orange"></button>
+                  <button class="color-dot" data-color="#10b981" style="background:#10b981" title="Emerald"></button>
+                  <button class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6" title="Violet"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Canvas Environment -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-left">
+                <span class="card-header-icon">🎨</span>
+                <div>
+                  <h4>Canvas Background</h4>
+                  <p class="card-header-sub">Choose grid texture and drawing background</p>
+                </div>
+              </div>
+            </div>
+            <div class="settings-card-body">
+              <div class="setting-row">
+                <label>Grid Appearance</label>
+                <div class="pill-options" id="canvasGridOptions">
+                  <button class="pill-opt active" data-grid="dots">Dot Matrix</button>
+                  <button class="pill-opt" data-grid="lines">Subtle Lines</button>
+                  <button class="pill-opt" data-grid="blank">Pure Blank</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Project Hub & Dotfiles Filter -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-left">
+                <span class="card-header-icon">⚡</span>
+                <div>
+                  <h4>Project Hub & Directory Filtering</h4>
+                  <p class="card-header-sub">Configure main workspace tree filtering and dotfile visibility</p>
+                </div>
+              </div>
+            </div>
+            <div class="settings-card-body">
+              <div class="setting-row">
+                <div>
+                  <label style="margin-bottom: 2px;">Main Tree View</label>
+                  <p style="font-size: 11px; color: var(--text-muted); margin: 0;">Show only coding projects in main tree (hides Music, Contacts, Videos, loose files)</p>
+                </div>
+                <div class="pill-options" id="projectsOnlyOptions">
+                  <button class="pill-opt active" data-projects-only="true">⚡ Projects Only (Recommended)</button>
+                  <button class="pill-opt" data-projects-only="false">📁 All Folders</button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div>
+                  <label style="margin-bottom: 2px;">Dotfiles (.env, .gitignore, .github, etc.)</label>
+                  <p style="font-size: 11px; color: var(--text-muted); margin: 0;">Show developer dotfiles inside projects, while keeping OS root dotfiles hidden</p>
+                </div>
+                <div class="pill-options" id="hiddenFilesOptions">
+                  <button class="pill-opt active" data-show-hidden="projects">Projects Only (Recommended)</button>
+                  <button class="pill-opt" data-show-hidden="none">Hide Everywhere</button>
+                  <button class="pill-opt" data-show-hidden="all">Show All</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 5: Share with Friends on Wi-Fi -->
+          <div class="settings-card share-card">
+            <div class="settings-card-header">
+              <div class="card-header-left">
+                <span class="card-header-icon">🌐</span>
+                <div>
+                  <h4>Share with Friends on Wi-Fi</h4>
+                  <p class="card-header-sub">Anyone on your home/office Wi-Fi can view your tree live</p>
+                </div>
+              </div>
+            </div>
+            <div class="settings-card-body">
+              <div class="network-links-box">
+                <div class="net-link-row">
+                  <span class="net-tag">Wi-Fi Link</span>
+                  <span id="lanUrlDisplay" class="net-url">Loading...</span>
+                  <button id="btnCopyLanUrl" class="copy-link-btn">
+                    <span>Copy Link</span>
+                  </button>
+                </div>
+
+                <div class="net-link-row secondary">
+                  <span class="net-tag">Localhost</span>
+                  <span id="localUrlDisplay" class="net-url">http://localhost:7337</span>
+                  <button id="btnCopyLocalUrl" class="copy-link-btn">
+                    <span>Copy</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 5: Workspace Storage & Backup -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-left">
+                <span class="card-header-icon">💾</span>
+                <div>
+                  <h4>Workspace Data</h4>
+                  <p class="card-header-sub">Export or reset your open workspace tabs</p>
+                </div>
+              </div>
+            </div>
+            <div class="settings-card-body">
+              <div class="setting-actions-row">
+                <button id="btnExportTabs" class="settings-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  <span>Export Setup (JSON)</span>
+                </button>
+                <button id="btnResetTabs" class="settings-btn danger">
+                  <span>Reset All Open Tabs</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 6: Background Service Status & Control -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-left">
+                <span class="card-header-icon">⚡</span>
+                <div>
+                  <h4>Background Service Control</h4>
+                  <p class="card-header-sub">Autostarts on Windows boot. You can stop or restart it anytime.</p>
+                </div>
+              </div>
+            </div>
+            <div class="settings-card-body">
+              <div class="network-links-box">
+                <div class="net-link-row">
+                  <span class="net-tag" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 600;">Active 🟢</span>
+                  <span class="net-url" id="serviceStatusDesc">Port 7337 &bull; Windows Startup Enabled</span>
+                  <button id="btnStopService" class="copy-link-btn danger" title="Shut down the background Node.js service">
+                    <span>Stop Service</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- In-App File & Code Viewer Drawer -->
+    <div id="fileViewerDrawer" class="file-viewer-drawer hidden">
+      <!-- Drag Resize Handle (Left Edge) -->
+      <div id="fvResizeHandle" class="drawer-resize-handle-left" title="Drag to resize drawer width (Double-click to expand/reset)"></div>
+      <div class="file-viewer-header">
+        <div class="file-info-group">
+          <span id="fvIcon" class="fv-icon">📄</span>
+          <div class="fv-meta">
+            <h3 id="fvTitle">Filename</h3>
+            <span id="fvPath" class="fv-path">C:\...</span>
+          </div>
+        </div>
+        <div class="fv-stats">
+          <span id="fvSize" class="fv-stat-badge">0 KB</span>
+          <span id="fvLines" class="fv-stat-badge">0 lines</span>
+        </div>
+        <div class="fv-actions">
+          <button id="fvWrapBtn" class="fv-btn" title="Toggle Word Wrap">Wrap: Off</button>
+          <button id="fvCopyBtn" class="fv-btn" title="Copy Content">Copy Content</button>
+          <button id="fvCloseBtn" class="fv-close-btn" title="Close Preview (Esc)">&times;</button>
+        </div>
+      </div>
+      <div class="file-viewer-body">
+        <div id="fvImageContainer" class="fv-image-container hidden">
+          <img id="fvImagePreview" src="" alt="Preview">
+        </div>
+        <div id="fvCodeContainer" class="fv-code-container">
+          <pre id="fvCodeBlock"><code id="fvCodeText"></code></pre>
+        </div>
+        <div id="fvBinaryNotice" class="fv-binary-notice hidden">
+          <span id="fvBinaryMessage">Binary file format</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- In-App Dev Server Live Console Drawer -->
+    <div id="devConsoleDrawer" class="dev-console-drawer hidden">
+      <!-- Drag Resize Handle (Top Edge) -->
+      <div id="consoleResizeHandle" class="drawer-resize-handle-top" title="Drag to resize console height (Double-click to expand/reset)"></div>
+      <div class="console-header">
+        <div class="console-title-group">
+          <span id="consoleStatusDot" class="status-dot stopped"></span>
+          <span id="consoleTitle" class="console-title">Live Dev Console</span>
+          <div id="consoleProjectTabs" class="console-project-tabs"></div>
+          <span id="consoleCmdBadge" class="console-cmd-badge hidden">npm run dev</span>
+        </div>
+        <div class="console-actions">
+          <button id="btnConsoleClear" class="console-btn" title="Clear Console">Clear</button>
+          <button id="btnConsoleStop" class="console-btn danger" title="Stop Process">Stop Server</button>
+          <button id="btnConsoleToggle" class="console-btn icon-btn" title="Expand / Minimize Panel">↕</button>
+          <button id="btnConsoleClose" class="console-btn close" title="Close Panel">&times;</button>
+        </div>
+      </div>
+      <!-- Secondary Filter Toolbar: Level Chips, Search, and Jump to Error -->
+      <div class="console-toolbar">
+        <div class="console-level-filters">
+          <button id="btnFilterLevelAll" class="console-level-chip active" data-level="all">All <span id="countAll" class="chip-count">0</span></button>
+          <button id="btnFilterLevelErrors" class="console-level-chip chip-error" data-level="error">🔴 Errors <span id="countErrors" class="chip-count">0</span></button>
+          <button id="btnFilterLevelWarn" class="console-level-chip chip-warn" data-level="warn">🟡 Warnings <span id="countWarn" class="chip-count">0</span></button>
+          <button id="btnFilterLevelHttp" class="console-level-chip chip-http" data-level="http">🌐 API Requests <span id="countHttp" class="chip-count">0</span></button>
+        </div>
+        <div class="console-search-box">
+          <span class="console-search-icon">🔍</span>
+          <input type="text" id="consoleSearchInput" class="console-search-input" placeholder="Filter logs (e.g. typeerror, /api)..." autocomplete="off" spellcheck="false">
+          <button id="btnConsoleSearchClear" class="console-search-clear hidden" title="Clear search">&times;</button>
+        </div>
+        <button id="btnJumpLatestError" class="jump-error-btn hidden" title="Jump to latest error in console">
+          <span>⬇ Latest Error</span>
+        </button>
+      </div>
+      <div id="consoleOutput" class="console-output"></div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="spinner"></div>
+      <p id="loadingText">Loading Workspace...</p>
+    </div>
+  </main>
+
+  <script src="app.js?v=4" type="module"></script>
+</body>
+</html>
