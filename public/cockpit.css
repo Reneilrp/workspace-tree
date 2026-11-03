@@ -339,6 +339,7 @@ body.cockpit-body {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 
 .pill-btn {
