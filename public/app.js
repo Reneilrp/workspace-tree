@@ -844,6 +844,170 @@ async function switchToProjectTab(tab) {
   camera.targetZoom = 1.05;
 }
 
+function formatScriptOptionLabel(s, rootPath) {
+  let folderTag = 'root';
+  if (s.cwd && rootPath) {
+    const normCwd = s.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+    const normRoot = rootPath.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (normCwd.startsWith(normRoot)) {
+      folderTag = normCwd.slice(normRoot.length).replace(/^\/+/, '') || 'root';
+    } else {
+      folderTag = normCwd.split('/').pop() || 'root';
+    }
+  } else if (s.name && s.name.includes(':')) {
+    folderTag = s.name.split(':')[0].trim();
+  }
+  return `📁 ${folderTag} ➔ ${s.command}`;
+}
+
+// Main View Custom Command Modal Controller
+let currentAppCustomProjPath = '';
+let currentAppCustomProjDetails = null;
+
+const customCmdModal = document.getElementById('customCmdModal');
+const btnCloseCustomCmd = document.getElementById('btnCloseCustomCmd');
+const btnCancelCustomCmd = document.getElementById('btnCancelCustomCmd');
+const btnSaveCustomCmd = document.getElementById('btnSaveCustomCmd');
+const customCmdFolder = document.getElementById('customCmdFolder');
+const customCmdCustomFolder = document.getElementById('customCmdCustomFolder');
+const customCmdInput = document.getElementById('customCmdInput');
+const customCmdPreviewFolder = document.getElementById('customCmdPreviewFolder');
+const customCmdPreviewExec = document.getElementById('customCmdPreviewExec');
+
+function openAppCustomCmdModal(projectPath, details) {
+  if (!customCmdModal) return;
+  currentAppCustomProjPath = projectPath;
+  currentAppCustomProjDetails = details || {};
+
+  customCmdFolder.innerHTML = '';
+  const rootOpt = document.createElement('option');
+  rootOpt.value = '';
+  rootOpt.textContent = '📁 / (Project Root)';
+  customCmdFolder.appendChild(rootOpt);
+
+  const subfolderSet = new Set();
+  if (details.subfolders) {
+    details.subfolders.forEach(s => subfolderSet.add(s));
+  }
+  if (details.scripts) {
+    details.scripts.forEach(s => {
+      if (s.cwd) {
+        const normCwd = s.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+        const normProj = (projectPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        if (normCwd.startsWith(normProj)) {
+          const rel = normCwd.slice(normProj.length).replace(/^\/+/, '');
+          if (rel) subfolderSet.add(rel);
+        }
+      }
+    });
+  }
+
+  subfolderSet.forEach(sub => {
+    const opt = document.createElement('option');
+    opt.value = sub;
+    opt.textContent = `📁 ${sub}`;
+    customCmdFolder.appendChild(opt);
+  });
+
+  const otherOpt = document.createElement('option');
+  otherOpt.value = '__other__';
+  otherOpt.textContent = '✏️ Custom relative path...';
+  customCmdFolder.appendChild(otherOpt);
+
+  customCmdCustomFolder.classList.add('hidden');
+  customCmdCustomFolder.value = '';
+  customCmdInput.value = '';
+
+  updateAppCustomCmdPreview();
+  customCmdModal.classList.remove('hidden');
+  setTimeout(() => { customCmdInput.focus(); }, 60);
+}
+
+function closeAppCustomCmdModal() {
+  if (customCmdModal) {
+    customCmdModal.classList.add('hidden');
+  }
+  if (scriptSelect.value === '__custom__') {
+    scriptSelect.selectedIndex = 0;
+  }
+}
+
+function getAppSelectedWorkingDir() {
+  if (customCmdFolder && customCmdFolder.value === '__other__') {
+    return (customCmdCustomFolder.value || '').trim();
+  }
+  return customCmdFolder ? (customCmdFolder.value || '') : '';
+}
+
+function updateAppCustomCmdPreview() {
+  const relFolder = getAppSelectedWorkingDir();
+  const cmd = customCmdInput ? (customCmdInput.value || '').trim() : '';
+  if (customCmdPreviewFolder) {
+    customCmdPreviewFolder.textContent = relFolder ? `/${relFolder}` : '/ (root)';
+  }
+  if (customCmdPreviewExec) {
+    customCmdPreviewExec.textContent = cmd || '—';
+  }
+}
+
+if (customCmdFolder) {
+  customCmdFolder.addEventListener('change', () => {
+    if (customCmdFolder.value === '__other__') {
+      customCmdCustomFolder.classList.remove('hidden');
+      customCmdCustomFolder.focus();
+    } else {
+      customCmdCustomFolder.classList.add('hidden');
+    }
+    updateAppCustomCmdPreview();
+  });
+}
+
+if (customCmdCustomFolder) {
+  customCmdCustomFolder.addEventListener('input', updateAppCustomCmdPreview);
+}
+
+if (customCmdInput) {
+  customCmdInput.addEventListener('input', updateAppCustomCmdPreview);
+}
+
+if (btnCloseCustomCmd) btnCloseCustomCmd.addEventListener('click', closeAppCustomCmdModal);
+if (btnCancelCustomCmd) btnCancelCustomCmd.addEventListener('click', closeAppCustomCmdModal);
+
+if (btnSaveCustomCmd) {
+  btnSaveCustomCmd.addEventListener('click', () => {
+    const cmd = (customCmdInput.value || '').trim();
+    if (!cmd) {
+      alert('Please enter a command to execute.');
+      customCmdInput.focus();
+      return;
+    }
+    const relFolder = getAppSelectedWorkingDir();
+    const fullCwd = relFolder ? (currentAppCustomProjPath.replace(/[\\\/]+$/, '') + '/' + relFolder.replace(/\\/g, '/')) : '';
+    const folderLabel = relFolder || 'root';
+
+    const projKey = normalizePathKey(currentAppCustomProjPath);
+    const opt = document.createElement('option');
+    opt.value = cmd;
+    opt.setAttribute('data-cwd', fullCwd);
+    opt.textContent = `📁 ${folderLabel} ➔ ${cmd} (Custom)`;
+    opt.selected = true;
+
+    scriptSelect.insertBefore(opt, scriptSelect.firstChild);
+    scriptSelect.value = cmd;
+
+    localStorage.setItem('workspace_cmd_' + projKey, cmd);
+    if (fullCwd) {
+      localStorage.setItem('workspace_cwd_' + projKey, fullCwd);
+    }
+
+    if (btnStartServerText) {
+      btnStartServerText.textContent = `Run: ${cmd}`;
+    }
+
+    if (customCmdModal) customCmdModal.classList.add('hidden');
+  });
+}
+
 // Load scripts for Start Server button
 async function loadProjectScripts(projectPath) {
   scriptSelect.innerHTML = '';
@@ -859,9 +1023,11 @@ async function loadProjectScripts(projectPath) {
     
     if (data.success && data.details && data.details.scripts && data.details.scripts.length > 0) {
       const scripts = data.details.scripts;
+      const subfolders = data.details.subfolders || [];
 
       const projKey = normalizePathKey(projectPath);
       const savedCmd = localStorage.getItem('workspace_cmd_' + projKey);
+      const savedCwd = localStorage.getItem('workspace_cwd_' + projKey);
 
       let hasSelected = false;
       const isLaravel = data.details.defaultScript && data.details.defaultScript.includes('artisan');
@@ -876,13 +1042,14 @@ async function loadProjectScripts(projectPath) {
           isSel = true;
           hasSelected = true;
         }
-        const label = s.name.includes(':') ? `📁 ${s.name}` : `${s.name} (${s.command})`;
+        const label = formatScriptOptionLabel(s, projectPath);
         return `<option value="${s.command}" data-cwd="${s.cwd || ''}" ${isSel ? 'selected' : ''}>${label}</option>`;
       }).join('');
 
       let customSavedOpt = '';
       if (savedCmd && !hasSelected && !isStaleNpm) {
-        customSavedOpt = `<option value="${savedCmd}" selected>Custom: ${savedCmd}</option>`;
+        const fName = savedCwd ? savedCwd.replace(/\\/g, '/').split('/').pop() : 'root';
+        customSavedOpt = `<option value="${savedCmd}" data-cwd="${savedCwd || ''}" selected>📁 ${fName} ➔ ${savedCmd} (Custom)</option>`;
       }
 
       scriptSelect.innerHTML = customSavedOpt + scriptOptions + `<option value="__custom__">⚙️ Custom command...</option>`;
@@ -894,41 +1061,38 @@ async function loadProjectScripts(projectPath) {
       } else {
         const chosen = scriptSelect.value;
         const selected = scripts.find(s => s.command === chosen);
-        btnStartServerText.textContent = selected ? `Run: ${selected.name.split(':')[0]}` : (chosen ? 'Run Server' : 'Run: dev');
+        btnStartServerText.textContent = selected ? `Run: ${selected.command}` : (chosen ? `Run: ${chosen}` : 'Run Server');
       }
 
       scriptSelect.onchange = () => {
-        const isRunning = allRunningServers.some(s => s.id === projKey);
         if (scriptSelect.value === '__custom__') {
-          const customCmd = prompt('Enter custom terminal command to run for this project:', '');
-          if (customCmd && customCmd.trim()) {
-            const raw = customCmd.trim();
-            const opt = document.createElement('option');
-            opt.value = raw;
-            opt.textContent = `Custom: ${raw}`;
-            opt.selected = true;
-            scriptSelect.insertBefore(opt, scriptSelect.firstChild);
-            scriptSelect.value = raw;
-            localStorage.setItem('workspace_cmd_' + projKey, raw);
-            btnStartServerText.textContent = 'Run Custom';
-          } else {
-            scriptSelect.selectedIndex = 0;
-          }
+          openAppCustomCmdModal(projectPath, data.details);
           return;
         }
 
         localStorage.setItem('workspace_cmd_' + projKey, scriptSelect.value);
+        const sel = scriptSelect.options[scriptSelect.selectedIndex];
+        const cwd = sel ? sel.getAttribute('data-cwd') : '';
+        if (cwd) {
+          localStorage.setItem('workspace_cwd_' + projKey, cwd);
+        }
+
+        const isRunning = allRunningServers.some(s => s.id === projKey);
         if (!isRunning) {
           const selected = scripts.find(s => s.command === scriptSelect.value);
-          btnStartServerText.textContent = selected ? `Run: ${selected.name.split(':')[0]}` : 'Run Server';
+          btnStartServerText.textContent = selected ? `Run: ${selected.command}` : 'Run Server';
         }
       };
     } else {
       // Fallback: allow custom command even if no predefined scripts found
-      scriptSelect.innerHTML = `<option value="__custom__">⚙️ Run custom command...</option>`;
+      scriptSelect.innerHTML = `<option value="__custom__">⚙️ Custom command...</option>`;
       scriptSelect.classList.remove('hidden');
       btnStartServerText.textContent = 'Run Command';
-      scriptSelect.onchange = null;
+      scriptSelect.onchange = () => {
+        if (scriptSelect.value === '__custom__') {
+          openAppCustomCmdModal(projectPath, data.details || {});
+        }
+      };
     }
   } catch {}
 }
@@ -2424,12 +2588,8 @@ btnStartServer.addEventListener('click', async () => {
   const cwd = selectedOpt ? selectedOpt.getAttribute('data-cwd') : null;
 
   if (cmd === '__custom__') {
-    const input = prompt('Enter command to run in this directory (e.g. "python main.py", "node server.js", "uvicorn app:app"):');
-    if (!input || !input.trim()) {
-      btnStartServerText.textContent = 'Run Command';
-      return;
-    }
-    cmd = input.trim();
+    openAppCustomCmdModal(targetPath, currentAppCustomProjDetails || {});
+    return;
   }
 
   btnStartServerText.textContent = 'Launching...';

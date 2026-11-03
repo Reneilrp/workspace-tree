@@ -127,8 +127,35 @@
     checkServerStatus();
   }
 
+  // Modal Elements
+  const customCmdModal = document.getElementById('customCmdModal');
+  const btnCloseCustomCmd = document.getElementById('btnCloseCustomCmd');
+  const btnCancelCustomCmd = document.getElementById('btnCancelCustomCmd');
+  const btnSaveCustomCmd = document.getElementById('btnSaveCustomCmd');
+  const customCmdFolder = document.getElementById('customCmdFolder');
+  const customCmdCustomFolder = document.getElementById('customCmdCustomFolder');
+  const customCmdInput = document.getElementById('customCmdInput');
+  const customCmdPreviewFolder = document.getElementById('customCmdPreviewFolder');
+  const customCmdPreviewExec = document.getElementById('customCmdPreviewExec');
+
   function normalizeKey(p) {
     return (p || '').toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '');
+  }
+
+  function formatScriptOptionLabel(s, rootPath) {
+    let folderTag = 'root';
+    if (s.cwd && rootPath) {
+      const normCwd = s.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+      const normRoot = rootPath.replace(/\\/g, '/').replace(/\/+$/, '');
+      if (normCwd.startsWith(normRoot)) {
+        folderTag = normCwd.slice(normRoot.length).replace(/^\/+/, '') || 'root';
+      } else {
+        folderTag = normCwd.split('/').pop() || 'root';
+      }
+    } else if (s.name && s.name.includes(':')) {
+      folderTag = s.name.split(':')[0].trim();
+    }
+    return `📁 ${folderTag} ➔ ${s.command}`;
   }
 
   function updateScriptCwdDisplay() {
@@ -151,10 +178,141 @@
     }
   }
 
+  function openCustomCommandModal() {
+    if (!customCmdModal) return;
+
+    customCmdFolder.innerHTML = '';
+    const rootOpt = document.createElement('option');
+    rootOpt.value = '';
+    rootOpt.textContent = '📁 / (Project Root)';
+    customCmdFolder.appendChild(rootOpt);
+
+    const subfolderSet = new Set();
+    if (currentProject && currentProject.subfolders) {
+      currentProject.subfolders.forEach(s => subfolderSet.add(s));
+    }
+    if (currentProject && currentProject.scripts) {
+      currentProject.scripts.forEach(s => {
+        if (s.cwd) {
+          const normCwd = s.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+          const normProj = (currentPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+          if (normCwd.startsWith(normProj)) {
+            const rel = normCwd.slice(normProj.length).replace(/^\/+/, '');
+            if (rel) subfolderSet.add(rel);
+          }
+        }
+      });
+    }
+
+    subfolderSet.forEach(sub => {
+      const opt = document.createElement('option');
+      opt.value = sub;
+      opt.textContent = `📁 ${sub}`;
+      customCmdFolder.appendChild(opt);
+    });
+
+    const otherOpt = document.createElement('option');
+    otherOpt.value = '__other__';
+    otherOpt.textContent = '✏️ Custom relative path...';
+    customCmdFolder.appendChild(otherOpt);
+
+    customCmdCustomFolder.classList.add('hidden');
+    customCmdCustomFolder.value = '';
+    customCmdInput.value = '';
+
+    updateCustomCmdPreview();
+    customCmdModal.classList.remove('hidden');
+    setTimeout(() => { customCmdInput.focus(); }, 60);
+  }
+
+  function closeCustomCommandModal() {
+    if (customCmdModal) {
+      customCmdModal.classList.add('hidden');
+    }
+    if (scriptSelect.value === '__custom__') {
+      scriptSelect.selectedIndex = 0;
+      updateScriptCwdDisplay();
+    }
+  }
+
+  function getSelectedWorkingDir() {
+    if (customCmdFolder.value === '__other__') {
+      return (customCmdCustomFolder.value || '').trim();
+    }
+    return customCmdFolder.value || '';
+  }
+
+  function updateCustomCmdPreview() {
+    const relFolder = getSelectedWorkingDir();
+    const cmd = (customCmdInput.value || '').trim();
+    if (customCmdPreviewFolder) {
+      customCmdPreviewFolder.textContent = relFolder ? `/${relFolder}` : '/ (root)';
+    }
+    if (customCmdPreviewExec) {
+      customCmdPreviewExec.textContent = cmd || '—';
+    }
+  }
+
+  if (customCmdFolder) {
+    customCmdFolder.addEventListener('change', () => {
+      if (customCmdFolder.value === '__other__') {
+        customCmdCustomFolder.classList.remove('hidden');
+        customCmdCustomFolder.focus();
+      } else {
+        customCmdCustomFolder.classList.add('hidden');
+      }
+      updateCustomCmdPreview();
+    });
+  }
+
+  if (customCmdCustomFolder) {
+    customCmdCustomFolder.addEventListener('input', updateCustomCmdPreview);
+  }
+
+  if (customCmdInput) {
+    customCmdInput.addEventListener('input', updateCustomCmdPreview);
+  }
+
+  if (btnCloseCustomCmd) btnCloseCustomCmd.addEventListener('click', closeCustomCommandModal);
+  if (btnCancelCustomCmd) btnCancelCustomCmd.addEventListener('click', closeCustomCommandModal);
+
+  if (btnSaveCustomCmd) {
+    btnSaveCustomCmd.addEventListener('click', () => {
+      const cmd = (customCmdInput.value || '').trim();
+      if (!cmd) {
+        alert('Please enter a command to execute.');
+        customCmdInput.focus();
+        return;
+      }
+      const relFolder = getSelectedWorkingDir();
+      const fullCwd = relFolder ? (currentPath.replace(/[\\\/]+$/, '') + '/' + relFolder.replace(/\\/g, '/')) : '';
+      const folderLabel = relFolder || 'root';
+
+      const projKey = normalizeKey(currentPath);
+      const opt = document.createElement('option');
+      opt.value = cmd;
+      opt.setAttribute('data-cwd', fullCwd);
+      opt.textContent = `📁 ${folderLabel} ➔ ${cmd} (Custom)`;
+      opt.selected = true;
+
+      scriptSelect.insertBefore(opt, scriptSelect.firstChild);
+      scriptSelect.value = cmd;
+
+      localStorage.setItem('workspace_cmd_' + projKey, cmd);
+      if (fullCwd) {
+        localStorage.setItem('workspace_cwd_' + projKey, fullCwd);
+      }
+
+      if (customCmdModal) customCmdModal.classList.add('hidden');
+      updateScriptCwdDisplay();
+    });
+  }
+
   function populateScripts(scripts, defaultScript) {
     scriptSelect.innerHTML = '';
     const projKey = normalizeKey(currentPath);
     const savedCmd = localStorage.getItem('workspace_cmd_' + projKey);
+    const savedCwd = localStorage.getItem('workspace_cwd_' + projKey);
 
     const isLaravel = defaultScript && defaultScript.includes('artisan');
     const isStaleNpm = isLaravel && savedCmd && !savedCmd.includes('artisan');
@@ -163,7 +321,9 @@
       if (savedCmd) {
         const opt = document.createElement('option');
         opt.value = savedCmd;
-        opt.textContent = `Custom: ${savedCmd}`;
+        opt.setAttribute('data-cwd', savedCwd || '');
+        const fName = savedCwd ? savedCwd.replace(/\\/g, '/').split('/').pop() : 'root';
+        opt.textContent = `📁 ${fName} ➔ ${savedCmd} (Custom)`;
         opt.selected = true;
         scriptSelect.appendChild(opt);
       } else {
@@ -186,9 +346,7 @@
       opt.value = s.command;
       opt.setAttribute('data-cwd', s.cwd || '');
       opt.setAttribute('data-name', s.name || '');
-
-      const label = s.name.includes(':') ? `📁 ${s.name}` : `${s.name} (${s.command})`;
-      opt.textContent = label;
+      opt.textContent = formatScriptOptionLabel(s, currentPath);
 
       if (!isStaleNpm && savedCmd && s.command === savedCmd) {
         opt.selected = true;
@@ -203,7 +361,9 @@
     if (savedCmd && !hasSelected && !isStaleNpm) {
       const customOpt = document.createElement('option');
       customOpt.value = savedCmd;
-      customOpt.textContent = `Custom: ${savedCmd}`;
+      customOpt.setAttribute('data-cwd', savedCwd || '');
+      const fName = savedCwd ? savedCwd.replace(/\\/g, '/').split('/').pop() : 'root';
+      customOpt.textContent = `📁 ${fName} ➔ ${savedCmd} (Custom)`;
       customOpt.selected = true;
       scriptSelect.insertBefore(customOpt, scriptSelect.firstChild);
     }
@@ -219,21 +379,16 @@
   function setupScriptSelectHandler(projKey) {
     scriptSelect.onchange = () => {
       if (scriptSelect.value === '__custom__') {
-        const customCmd = prompt('Enter custom terminal command (e.g. "php artisan serve", "backend: php artisan serve"):', '');
-        if (customCmd && customCmd.trim()) {
-          const raw = customCmd.trim();
-          const opt = document.createElement('option');
-          opt.value = raw;
-          opt.textContent = `Custom: ${raw}`;
-          opt.selected = true;
-          scriptSelect.insertBefore(opt, scriptSelect.firstChild);
-          scriptSelect.value = raw;
-          localStorage.setItem('workspace_cmd_' + projKey, raw);
-        } else {
-          scriptSelect.selectedIndex = 0;
-        }
-      } else if (scriptSelect.value) {
+        openCustomCommandModal();
+        return;
+      }
+      if (scriptSelect.value) {
         localStorage.setItem('workspace_cmd_' + projKey, scriptSelect.value);
+        const sel = scriptSelect.options[scriptSelect.selectedIndex];
+        const cwd = sel ? sel.getAttribute('data-cwd') : '';
+        if (cwd) {
+          localStorage.setItem('workspace_cwd_' + projKey, cwd);
+        }
       }
       updateScriptCwdDisplay();
     };

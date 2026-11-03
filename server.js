@@ -188,7 +188,8 @@ async function getProjectDetails(dirPath) {
     isProject: false,
     projectType: 'Folder',
     scripts: [],
-    defaultScript: null
+    defaultScript: null,
+    subfolders: []
   };
 
   try {
@@ -507,6 +508,32 @@ async function getProjectDetails(dirPath) {
     if (details.scripts.length > 0) {
       details.defaultScript = details.scripts[0].command;
     }
+
+    // Collect discovered subfolders for custom command targeting
+    const discoveredSubs = [];
+    for (const entry of entries) {
+      if (IGNORED_NAMES.has(entry) || entry.startsWith('.')) continue;
+      const subPath = path.join(dirPath, entry);
+      try {
+        const st = await fsp.stat(subPath);
+        if (st.isDirectory()) {
+          discoveredSubs.push(entry);
+          const lower = entry.toLowerCase();
+          if (['frontend', 'apps', 'packages', 'services', 'modules'].includes(lower)) {
+            const nested = await fsp.readdir(subPath);
+            for (const nest of nested) {
+              if (IGNORED_NAMES.has(nest) || nest.startsWith('.')) continue;
+              const nestPath = path.join(subPath, nest);
+              const nestSt = await fsp.stat(nestPath);
+              if (nestSt.isDirectory()) {
+                discoveredSubs.push(`${entry}/${nest}`);
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+    details.subfolders = discoveredSubs;
 
     return { success: true, details };
   } catch (err) {

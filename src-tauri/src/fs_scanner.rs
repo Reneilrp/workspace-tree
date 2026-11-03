@@ -450,6 +450,7 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
         project_type: "Folder".to_string(),
         scripts: Vec::new(),
         default_script: None,
+        subfolders: Vec::new(),
     };
 
     let entries = match fs::read_dir(p) {
@@ -851,6 +852,32 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
     if let Some(first) = details.scripts.first() {
         details.default_script = Some(first.command.clone());
     }
+
+    // Collect discovered subfolders for custom command targeting
+    let mut discovered_subs = Vec::new();
+    if let Ok(sub_entries) = fs::read_dir(p) {
+        for sub in sub_entries.flatten() {
+            let sub_name = sub.file_name().to_string_lossy().to_string();
+            if sub_name.starts_with('.') || IGNORED_NAMES.contains(&sub_name.as_str()) {
+                continue;
+            }
+            if sub.path().is_dir() {
+                discovered_subs.push(sub_name.clone());
+                let lower = sub_name.to_lowercase();
+                if lower == "frontend" || lower == "apps" || lower == "packages" || lower == "services" || lower == "modules" {
+                    if let Ok(nested) = fs::read_dir(sub.path()) {
+                        for nest in nested.flatten() {
+                            let nest_name = nest.file_name().to_string_lossy().to_string();
+                            if !nest_name.starts_with('.') && !IGNORED_NAMES.contains(&nest_name.as_str()) && nest.path().is_dir() {
+                                discovered_subs.push(format!("{}/{}", sub_name, nest_name));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    details.subfolders = discovered_subs;
 
     ProjectDetailsResult {
         success: true,

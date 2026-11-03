@@ -611,6 +611,35 @@
       </div>
     </div>
 
+    <!-- Custom Command Config Modal -->
+    <div id="customCmdModal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title">⚙️ Configure Custom Command</div>
+          <button id="btnCloseCustomCmd" class="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="customCmdFolder">Target Working Directory</label>
+            <select id="customCmdFolder" class="modal-select"></select>
+            <input type="text" id="customCmdCustomFolder" class="modal-input hidden" placeholder="Type relative folder (e.g. backend, frontend/web)..." style="margin-top: 6px;">
+          </div>
+          <div class="form-group">
+            <label for="customCmdInput">Command to Execute</label>
+            <input type="text" id="customCmdInput" class="modal-input" placeholder="e.g. php artisan serve, npm run dev, python main.py" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="custom-cmd-preview">
+            <div class="preview-row"><span>Target Folder:</span> <code id="customCmdPreviewFolder">/ (root)</code></div>
+            <div class="preview-row"><span>Execution:</span> <code id="customCmdPreviewExec">—</code></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="btnCancelCustomCmd" class="btn btn-secondary">Cancel</button>
+          <button id="btnSaveCustomCmd" class="btn btn-primary">Save & Select Command</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Loading Indicator -->
     <div id="loadingOverlay" class="loading-overlay">
       <div class="spinner"></div>

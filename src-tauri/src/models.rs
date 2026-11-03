@@ -67,6 +67,8 @@ pub struct ProjectDetails {
     pub scripts: Vec<ScriptItem>,
     #[serde(rename = "defaultScript", skip_serializing_if = "Option::is_none")]
     pub default_script: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subfolders: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
