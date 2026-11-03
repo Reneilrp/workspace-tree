@@ -1,3 +1,4 @@
+use std::fs;
 use app_lib::dev_server::ServerManager;
 use app_lib::fs_scanner;
 use app_lib::system_tools;
@@ -30,6 +31,49 @@ fn test_project_details() {
         assert!(details.is_project, "src-tauri should be recognized as a project");
         assert_eq!(details.project_type, "Rust");
     }
+}
+
+#[test]
+fn test_express_detection() {
+    let temp_dir = std::env::temp_dir().join("test_express_app");
+    let _ = fs::create_dir_all(&temp_dir);
+    let _ = fs::write(temp_dir.join("server.js"), "const express = require('express');");
+    
+    let res = fs_scanner::get_project_details(&temp_dir.to_string_lossy());
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    assert!(res.success);
+    let details = res.details.unwrap();
+    assert!(details.is_project);
+    assert!(details.scripts.iter().any(|s| s.command == "node server.js"), "Should auto-detect node server.js");
+    println!("Express auto-detection verified: {:?}", details.scripts);
+}
+
+#[test]
+fn test_python_frameworks_detection() {
+    // 1. Django
+    let django_dir = std::env::temp_dir().join("test_django_app");
+    let _ = fs::create_dir_all(&django_dir);
+    let _ = fs::write(django_dir.join("manage.py"), "# django manage");
+    let res_django = fs_scanner::get_project_details(&django_dir.to_string_lossy());
+    let _ = fs::remove_dir_all(&django_dir);
+
+    assert!(res_django.success);
+    let django_details = res_django.details.unwrap();
+    assert!(django_details.scripts.iter().any(|s| s.command.contains("manage.py runserver")), "Should detect Django runserver");
+
+    // 2. FastAPI
+    let fastapi_dir = std::env::temp_dir().join("test_fastapi_app");
+    let _ = fs::create_dir_all(&fastapi_dir);
+    let _ = fs::write(fastapi_dir.join("main.py"), "from fastapi import FastAPI\napp = FastAPI()");
+    let res_fastapi = fs_scanner::get_project_details(&fastapi_dir.to_string_lossy());
+    let _ = fs::remove_dir_all(&fastapi_dir);
+
+    assert!(res_fastapi.success);
+    let fastapi_details = res_fastapi.details.unwrap();
+    assert!(fastapi_details.scripts.iter().any(|s| s.command.contains("uvicorn main:app --reload")), "Should detect FastAPI uvicorn");
+
+    println!("Python & Django & FastAPI auto-detection verified!");
 }
 
 #[test]

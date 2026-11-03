@@ -45,9 +45,14 @@ const IGNORED_NAMES = new Set([
 // Known project indicator files
 const PROJECT_INDICATORS = [
   { file: 'package.json', type: 'Node.js', icon: 'node' },
+  { file: 'server.js', type: 'Node.js (Express)', icon: 'node' },
   { file: 'Cargo.toml', type: 'Rust', icon: 'rust' },
   { file: 'pyproject.toml', type: 'Python', icon: 'python' },
   { file: 'requirements.txt', type: 'Python', icon: 'python' },
+  { file: 'manage.py', type: 'Python (Django)', icon: 'python' },
+  { file: 'Pipfile', type: 'Python', icon: 'python' },
+  { file: 'setup.py', type: 'Python', icon: 'python' },
+  { file: 'environment.yml', type: 'Python', icon: 'python' },
   { file: 'go.mod', type: 'Go', icon: 'go' },
   { file: 'pom.xml', type: 'Java', icon: 'java' },
   { file: '.git', type: 'Git Repo', icon: 'git' },
@@ -188,28 +193,43 @@ async function getProjectDetails(dirPath) {
   try {
     const entries = await fsp.readdir(dirPath);
     
-    // 1. Node.js (package.json)
-    if (entries.includes('package.json')) {
+    // 1. Node.js / Express
+    const hasPkg = entries.includes('package.json');
+    const hasServerJs = entries.includes('server.js');
+    const hasAppJs = entries.includes('app.js');
+    const hasIndexJs = entries.includes('index.js');
+
+    if (hasPkg || hasServerJs || hasAppJs || hasIndexJs) {
       details.isProject = true;
       details.projectType = 'Node.js';
-      try {
-        const pkgData = JSON.parse(await fsp.readFile(path.join(dirPath, 'package.json'), 'utf-8'));
-        if (pkgData.name) details.name = pkgData.name;
-        if (pkgData.scripts) {
-          const priority = ['dev', 'start', 'serve', 'build', 'test'];
-          for (const s of priority) {
-            if (pkgData.scripts[s]) {
-              details.scripts.push({ name: s, command: `npm run ${s}` });
+      if (hasPkg) {
+        try {
+          const pkgData = JSON.parse(await fsp.readFile(path.join(dirPath, 'package.json'), 'utf-8'));
+          if (pkgData.name) details.name = pkgData.name;
+          if (pkgData.scripts) {
+            const priority = ['dev', 'start', 'serve', 'build', 'test'];
+            for (const s of priority) {
+              if (pkgData.scripts[s]) {
+                details.scripts.push({ name: s, command: `npm run ${s}` });
+              }
+            }
+            // Add any remaining scripts
+            for (const [s, cmd] of Object.entries(pkgData.scripts)) {
+              if (!priority.includes(s)) {
+                details.scripts.push({ name: s, command: `npm run ${s}` });
+              }
             }
           }
-          // Add any remaining scripts
-          for (const [s, cmd] of Object.entries(pkgData.scripts)) {
-            if (!priority.includes(s)) {
-              details.scripts.push({ name: s, command: `npm run ${s}` });
-            }
-          }
-        }
-      } catch {}
+        } catch {}
+      }
+
+      // Standalone Node/Express server fallbacks
+      const hasRunScript = details.scripts.some(s => s.name === 'dev' || s.name === 'start');
+      if (!hasRunScript) {
+        if (hasServerJs) details.scripts.push({ name: 'node server.js', command: 'node server.js' });
+        if (hasAppJs) details.scripts.push({ name: 'node app.js', command: 'node app.js' });
+        if (hasIndexJs) details.scripts.push({ name: 'node index.js', command: 'node index.js' });
+      }
     }
 
     // 2. Rust (Cargo.toml)
@@ -221,14 +241,75 @@ async function getProjectDetails(dirPath) {
       details.scripts.push({ name: 'build', command: 'cargo build' });
     }
 
-    // 3. Python (pyproject.toml, requirements.txt, main.py, app.py)
-    if (entries.includes('pyproject.toml') || entries.includes('requirements.txt') || entries.includes('main.py') || entries.includes('app.py')) {
+    // 3. Python (FastAPI, Flask, Django, Streamlit, Scripts, Virtualenvs)
+    const isPython = entries.includes('pyproject.toml') ||
+      entries.includes('requirements.txt') ||
+      entries.includes('manage.py') ||
+      entries.includes('Pipfile') ||
+      entries.includes('setup.py') ||
+      entries.includes('environment.yml') ||
+      entries.includes('main.py') ||
+      entries.includes('app.py') ||
+      entries.includes('server.py') ||
+      entries.includes('api.py') ||
+      entries.includes('run.py');
+
+    if (isPython) {
       details.isProject = true;
-      details.projectType = details.projectType === 'Folder' ? 'Python' : details.projectType;
-      if (entries.includes('main.py')) {
-        details.scripts.push({ name: 'run main.py', command: 'python main.py' });
-      } else if (entries.includes('app.py')) {
-        details.scripts.push({ name: 'run app.py', command: 'python app.py' });
+      if (details.projectType === 'Folder' || details.projectType === 'Node.js') {
+        details.projectType = entries.includes('manage.py') ? 'Python (Django)' : 'Python';
+      }
+
+      const isWsl = isWslPath(dirPath);
+      let pyBin = isWsl ? 'python3 -u' : 'python -u';
+      if (isWsl) {
+        if (fs.existsSync(path.join(dirPath, '.venv', 'bin', 'python'))) pyBin = '.venv/bin/python -u';
+        else if (fs.existsSync(path.join(dirPath, 'venv', 'bin', 'python'))) pyBin = 'venv/bin/python -u';
+      } else {
+        if (fs.existsSync(path.join(dirPath, '.venv', 'Scripts', 'python.exe'))) pyBin = '.\\.venv\\Scripts\\python.exe -u';
+        else if (fs.existsSync(path.join(dirPath, 'venv', 'Scripts', 'python.exe'))) pyBin = '.\\venv\\Scripts\\python.exe -u';
+      }
+
+      // Django
+      if (entries.includes('manage.py')) {
+        details.scripts.push({ name: 'django runserver', command: `${pyBin} manage.py runserver` });
+        details.scripts.push({ name: 'django migrate', command: `${pyBin} manage.py migrate` });
+      }
+
+      // FastAPI / Uvicorn check
+      let isFastApi = false;
+      for (const f of ['main.py', 'app.py', 'api.py', 'server.py']) {
+        if (entries.includes(f)) {
+          try {
+            const content = await fsp.readFile(path.join(dirPath, f), 'utf-8');
+            if (content.includes('FastAPI') || content.includes('fastapi')) {
+              isFastApi = true;
+              const mod = f.replace(/\.py$/, '');
+              details.scripts.push({ name: 'fastapi dev (uvicorn)', command: `uvicorn ${mod}:app --reload` });
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      // Streamlit
+      if (entries.includes('streamlit_app.py')) {
+        details.scripts.push({ name: 'streamlit run', command: 'streamlit run streamlit_app.py' });
+      }
+
+      // Standard python scripts
+      for (const file of ['main.py', 'app.py', 'server.py', 'run.py', 'api.py', 'bot.py']) {
+        if (entries.includes(file)) {
+          const cmd = `${pyBin} ${file}`;
+          if (!details.scripts.some(s => s.command === cmd)) {
+            details.scripts.push({ name: `run ${file}`, command: cmd });
+          }
+        }
+      }
+
+      // Poetry
+      if (entries.includes('poetry.lock')) {
+        details.scripts.push({ name: 'poetry run', command: 'poetry run python main.py' });
       }
     }
 

@@ -858,10 +858,11 @@ async function loadProjectScripts(projectPath) {
     if (data.success && data.details && data.details.scripts && data.details.scripts.length > 0) {
       const scripts = data.details.scripts;
 
-      // Populate dropdown with data-cwd support
-      scriptSelect.innerHTML = scripts.map(s => `
+      // Populate dropdown with data-cwd support + Custom Command option
+      const scriptOptions = scripts.map(s => `
         <option value="${s.command}" data-cwd="${s.cwd || ''}">${s.name} (${s.command})</option>
       `).join('');
+      scriptSelect.innerHTML = scriptOptions + `<option value="__custom__">⚙️ Custom command...</option>`;
 
       scriptSelect.classList.remove('hidden');
       const projKey = normalizePathKey(projectPath);
@@ -879,12 +880,22 @@ async function loadProjectScripts(projectPath) {
         if (isRunning) {
           btnStartServerText.textContent = 'Server Running';
         } else {
-          const selected = scripts.find(s => s.command === scriptSelect.value);
-          if (selected) {
-            btnStartServerText.textContent = `Run: ${selected.name.split(':')[0]}`;
+          if (scriptSelect.value === '__custom__') {
+            btnStartServerText.textContent = 'Run Custom...';
+          } else {
+            const selected = scripts.find(s => s.command === scriptSelect.value);
+            if (selected) {
+              btnStartServerText.textContent = `Run: ${selected.name.split(':')[0]}`;
+            }
           }
         }
       };
+    } else {
+      // Fallback: allow custom command even if no predefined scripts found
+      scriptSelect.innerHTML = `<option value="__custom__">⚙️ Run custom command...</option>`;
+      scriptSelect.classList.remove('hidden');
+      btnStartServerText.textContent = 'Run Command';
+      scriptSelect.onchange = null;
     }
   } catch {}
 }
@@ -2376,8 +2387,17 @@ btnStartServer.addEventListener('click', async () => {
   const projTitle = (focusedBreadcrumbNode && focusedBreadcrumbNode.name) || (currentTab && currentTab.title) || (selectedNode && selectedNode.name);
 
   const selectedOpt = scriptSelect.options[scriptSelect.selectedIndex];
-  const cmd = scriptSelect.value || null;
+  let cmd = scriptSelect.value || null;
   const cwd = selectedOpt ? selectedOpt.getAttribute('data-cwd') : null;
+
+  if (cmd === '__custom__') {
+    const input = prompt('Enter command to run in this directory (e.g. "python main.py", "node server.js", "uvicorn app:app"):');
+    if (!input || !input.trim()) {
+      btnStartServerText.textContent = 'Run Command';
+      return;
+    }
+    cmd = input.trim();
+  }
 
   btnStartServerText.textContent = 'Launching...';
 

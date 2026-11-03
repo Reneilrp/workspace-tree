@@ -47,6 +47,11 @@ pub const PROJECT_INDICATORS: &[ProjectIndicator] = &[
     ProjectIndicator { file: "Cargo.toml", ptype: "Rust", icon: "rust" },
     ProjectIndicator { file: "pyproject.toml", ptype: "Python", icon: "python" },
     ProjectIndicator { file: "requirements.txt", ptype: "Python", icon: "python" },
+    ProjectIndicator { file: "manage.py", ptype: "Python (Django)", icon: "python" },
+    ProjectIndicator { file: "Pipfile", ptype: "Python", icon: "python" },
+    ProjectIndicator { file: "setup.py", ptype: "Python", icon: "python" },
+    ProjectIndicator { file: "environment.yml", ptype: "Python", icon: "python" },
+    ProjectIndicator { file: "server.js", ptype: "Node.js (Express)", icon: "node" },
     ProjectIndicator { file: "go.mod", ptype: "Go", icon: "go" },
     ProjectIndicator { file: "pom.xml", ptype: "Java", icon: "java" },
     ProjectIndicator { file: ".git", ptype: "Git Repo", icon: "git" },
@@ -353,36 +358,69 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
 
     let entry_set: HashSet<String> = entries.into_iter().collect();
 
-    // 1. Node.js (package.json)
-    if entry_set.contains("package.json") {
+    // 1. Node.js / Express
+    let has_pkg = entry_set.contains("package.json");
+    let has_server_js = entry_set.contains("server.js");
+    let has_app_js = entry_set.contains("app.js");
+    let has_index_js = entry_set.contains("index.js");
+
+    if has_pkg || has_server_js || has_app_js || has_index_js {
         details.is_project = true;
         details.project_type = "Node.js".to_string();
-        if let Ok(content) = fs::read_to_string(p.join("package.json")) {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(pkg_name) = val.get("name").and_then(|v| v.as_str()) {
-                    details.name = pkg_name.to_string();
-                }
-                if let Some(scripts) = val.get("scripts").and_then(|v| v.as_object()) {
-                    let priority = ["dev", "start", "serve", "build", "test"];
-                    for s in priority {
-                        if scripts.contains_key(s) {
-                            details.scripts.push(ScriptItem {
-                                name: s.to_string(),
-                                command: format!("npm run {}", s),
-                                cwd: None,
-                            });
+        if has_pkg {
+            if let Ok(content) = fs::read_to_string(p.join("package.json")) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(pkg_name) = val.get("name").and_then(|v| v.as_str()) {
+                        details.name = pkg_name.to_string();
+                    }
+                    if let Some(scripts) = val.get("scripts").and_then(|v| v.as_object()) {
+                        let priority = ["dev", "start", "serve", "build", "test"];
+                        for s in priority {
+                            if scripts.contains_key(s) {
+                                details.scripts.push(ScriptItem {
+                                    name: s.to_string(),
+                                    command: format!("npm run {}", s),
+                                    cwd: None,
+                                });
+                            }
+                        }
+                        for (k, _) in scripts {
+                            if !priority.contains(&k.as_str()) {
+                                details.scripts.push(ScriptItem {
+                                    name: k.clone(),
+                                    command: format!("npm run {}", k),
+                                    cwd: None,
+                                });
+                            }
                         }
                     }
-                    for (k, _) in scripts {
-                        if !priority.contains(&k.as_str()) {
-                            details.scripts.push(ScriptItem {
-                                name: k.clone(),
-                                command: format!("npm run {}", k),
-                                cwd: None,
-                            });
-                        }
-                    }
                 }
+            }
+        }
+
+        // Express / Node standalone fallbacks if no dev/start script exists
+        let has_run_script = details.scripts.iter().any(|s| s.name == "dev" || s.name == "start");
+        if !has_run_script {
+            if has_server_js {
+                details.scripts.push(ScriptItem {
+                    name: "node server.js".to_string(),
+                    command: "node server.js".to_string(),
+                    cwd: None,
+                });
+            }
+            if has_app_js {
+                details.scripts.push(ScriptItem {
+                    name: "node app.js".to_string(),
+                    command: "node app.js".to_string(),
+                    cwd: None,
+                });
+            }
+            if has_index_js {
+                details.scripts.push(ScriptItem {
+                    name: "node index.js".to_string(),
+                    command: "node index.js".to_string(),
+                    cwd: None,
+                });
             }
         }
     }
@@ -408,26 +446,114 @@ pub fn get_project_details(dir_path: &str) -> ProjectDetailsResult {
         });
     }
 
-    // 3. Python
-    if entry_set.contains("pyproject.toml")
+    // 3. Python (FastAPI, Flask, Django, Streamlit, Scripts, Virtualenv)
+    let is_python = entry_set.contains("pyproject.toml")
         || entry_set.contains("requirements.txt")
+        || entry_set.contains("manage.py")
+        || entry_set.contains("Pipfile")
+        || entry_set.contains("setup.py")
+        || entry_set.contains("environment.yml")
         || entry_set.contains("main.py")
         || entry_set.contains("app.py")
-    {
+        || entry_set.contains("server.py")
+        || entry_set.contains("api.py")
+        || entry_set.contains("run.py");
+
+    if is_python {
         details.is_project = true;
         if details.project_type == "Folder" {
-            details.project_type = "Python".to_string();
+            details.project_type = if entry_set.contains("manage.py") {
+                "Python (Django)".to_string()
+            } else {
+                "Python".to_string()
+            };
         }
-        if entry_set.contains("main.py") {
+
+        let is_wsl = is_wsl_path(dir_path);
+        // Detect virtualenv (.venv or venv)
+        let py_bin = if is_wsl {
+            if p.join(".venv").join("bin").join("python").exists() {
+                ".venv/bin/python -u"
+            } else if p.join("venv").join("bin").join("python").exists() {
+                "venv/bin/python -u"
+            } else {
+                "python3 -u"
+            }
+        } else if p.join(".venv").join("Scripts").join("python.exe").exists() {
+            r".\.venv\Scripts\python.exe -u"
+        } else if p.join("venv").join("Scripts").join("python.exe").exists() {
+            r".\venv\Scripts\python.exe -u"
+        } else {
+            "python -u"
+        };
+
+        // Django
+        if entry_set.contains("manage.py") {
             details.scripts.push(ScriptItem {
-                name: "run main.py".to_string(),
-                command: "python main.py".to_string(),
+                name: "django runserver".to_string(),
+                command: format!("{} manage.py runserver", py_bin),
                 cwd: None,
             });
-        } else if entry_set.contains("app.py") {
             details.scripts.push(ScriptItem {
-                name: "run app.py".to_string(),
-                command: "python app.py".to_string(),
+                name: "django migrate".to_string(),
+                command: format!("{} manage.py migrate", py_bin),
+                cwd: None,
+            });
+        }
+
+        // FastAPI / Uvicorn check
+        let is_fastapi = ["main.py", "app.py", "api.py", "server.py"].iter().any(|f| {
+            if entry_set.contains(*f) {
+                if let Ok(content) = fs::read_to_string(p.join(f)) {
+                    return content.contains("FastAPI") || content.contains("fastapi");
+                }
+            }
+            false
+        });
+
+        if is_fastapi {
+            let entry_mod = if entry_set.contains("main.py") {
+                "main"
+            } else if entry_set.contains("app.py") {
+                "app"
+            } else {
+                "api"
+            };
+            details.scripts.push(ScriptItem {
+                name: "fastapi dev (uvicorn)".to_string(),
+                command: format!("uvicorn {}:app --reload", entry_mod),
+                cwd: None,
+            });
+        }
+
+        // Streamlit
+        if entry_set.contains("streamlit_app.py") {
+            details.scripts.push(ScriptItem {
+                name: "streamlit run".to_string(),
+                command: "streamlit run streamlit_app.py".to_string(),
+                cwd: None,
+            });
+        }
+
+        // Standard script entrypoints
+        for file in ["main.py", "app.py", "server.py", "run.py", "api.py", "bot.py"] {
+            if entry_set.contains(file) {
+                let script_cmd = format!("{} {}", py_bin, file);
+                if !details.scripts.iter().any(|s| s.command == script_cmd) {
+                    details.scripts.push(ScriptItem {
+                        name: format!("run {}", file),
+                        command: script_cmd,
+                        cwd: None,
+                    });
+                }
+            }
+        }
+
+        // Poetry
+        if entry_set.contains("poetry.lock") {
+            details.scripts.push(ScriptItem {
+                name: "poetry run".to_string(),
+                command: "poetry run python main.py".to_string(),
                 cwd: None,
             });
         }
