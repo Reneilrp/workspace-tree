@@ -864,20 +864,24 @@ async function loadProjectScripts(projectPath) {
       const savedCmd = localStorage.getItem('workspace_cmd_' + projKey);
 
       let hasSelected = false;
+      const isLaravel = data.details.defaultScript && data.details.defaultScript.includes('artisan');
+      const isStaleNpm = isLaravel && savedCmd && !savedCmd.includes('artisan');
+
       const scriptOptions = scripts.map(s => {
         let isSel = false;
-        if (savedCmd && s.command === savedCmd) {
+        if (!isStaleNpm && savedCmd && s.command === savedCmd) {
           isSel = true;
           hasSelected = true;
-        } else if (!savedCmd && !hasSelected && s.command === data.details.defaultScript) {
+        } else if ((!savedCmd || isStaleNpm) && !hasSelected && s.command === data.details.defaultScript) {
           isSel = true;
           hasSelected = true;
         }
-        return `<option value="${s.command}" data-cwd="${s.cwd || ''}" ${isSel ? 'selected' : ''}>${s.name} (${s.command})</option>`;
+        const label = s.name.includes(':') ? `📁 ${s.name}` : `${s.name} (${s.command})`;
+        return `<option value="${s.command}" data-cwd="${s.cwd || ''}" ${isSel ? 'selected' : ''}>${label}</option>`;
       }).join('');
 
       let customSavedOpt = '';
-      if (savedCmd && !hasSelected) {
+      if (savedCmd && !hasSelected && !isStaleNpm) {
         customSavedOpt = `<option value="${savedCmd}" selected>Custom: ${savedCmd}</option>`;
       }
 
@@ -2828,7 +2832,7 @@ function toggleToolbar() {
 
 if (btnToggleTools) btnToggleTools.addEventListener('click', toggleTools);
 if (btnHideToolbarMain) btnHideToolbarMain.addEventListener('click', () => setToolbarCollapsed(true));
-if (btnHideToolbarProj) btnHideToolbarProj.addEventListener('click', () => setToolsMinimized(true));
+if (btnHideToolbarProj) btnHideToolbarProj.addEventListener('click', () => setToolbarCollapsed(true));
 
 // Ensure tools are visible by default
 setToolsMinimized(false);

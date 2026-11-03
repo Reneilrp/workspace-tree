@@ -75,7 +75,67 @@ impl ServerManager {
         custom_name: Option<&str>,
     ) -> ActionResponse {
         let key = normalize_key(target_path);
-        let working_dir = cwd.unwrap_or(target_path).to_string();
+        let mut working_dir = cwd.unwrap_or(target_path).to_string();
+        let mut final_cmd = command.to_string();
+
+        // 1. Support prefix syntax like "backend: php artisan serve"
+        if let Some(pos) = final_cmd.find(':') {
+            let prefix = final_cmd[..pos].trim();
+            let rest = final_cmd[pos + 1..].trim();
+            if !prefix.is_empty() && !rest.is_empty() && !prefix.contains(' ') {
+                let candidate = Path::new(target_path).join(prefix);
+                if candidate.is_dir() {
+                    working_dir = candidate.to_string_lossy().to_string();
+                    final_cmd = rest.to_string();
+                }
+            }
+        }
+
+        // 2. Auto-align directory if target executable or file is in a subfolder (e.g. backend/artisan)
+        let p_work = Path::new(&working_dir);
+        if final_cmd.contains("artisan") && !p_work.join("artisan").exists() {
+            if p_work.join("backend").join("artisan").exists() {
+                working_dir = p_work.join("backend").to_string_lossy().to_string();
+            } else if let Ok(entries) = std::fs::read_dir(p_work) {
+                for e in entries.flatten() {
+                    if e.path().is_dir() && e.path().join("artisan").exists() {
+                        working_dir = e.path().to_string_lossy().to_string();
+                        break;
+                    }
+                }
+            }
+        } else if (final_cmd.starts_with("npm")
+            || final_cmd.starts_with("yarn")
+            || final_cmd.starts_with("pnpm")
+            || final_cmd.starts_with("bun")
+            || final_cmd.starts_with("vite"))
+            && !p_work.join("package.json").exists()
+        {
+            if p_work.join("frontend").join("package.json").exists() {
+                working_dir = p_work.join("frontend").to_string_lossy().to_string();
+            } else if p_work.join("backend").join("package.json").exists() {
+                working_dir = p_work.join("backend").to_string_lossy().to_string();
+            } else if let Ok(entries) = std::fs::read_dir(p_work) {
+                for e in entries.flatten() {
+                    if e.path().is_dir() && e.path().join("package.json").exists() {
+                        working_dir = e.path().to_string_lossy().to_string();
+                        break;
+                    }
+                }
+            }
+        } else if final_cmd.contains("manage.py") && !p_work.join("manage.py").exists() {
+            if p_work.join("backend").join("manage.py").exists() {
+                working_dir = p_work.join("backend").to_string_lossy().to_string();
+            } else if let Ok(entries) = std::fs::read_dir(p_work) {
+                for e in entries.flatten() {
+                    if e.path().is_dir() && e.path().join("manage.py").exists() {
+                        working_dir = e.path().to_string_lossy().to_string();
+                        break;
+                    }
+                }
+            }
+        }
+
         let is_wsl = is_wsl_path(&working_dir);
 
         let p = Path::new(&working_dir);
@@ -94,14 +154,14 @@ impl ServerManager {
         let spawn_res = if is_wsl {
             let linux_path = to_linux_path(&working_dir);
             Command::new("wsl.exe")
-                .args(["-d", "Ubuntu", "--cd", &linux_path, "bash", "-ic", command])
+                .args(["-d", "Ubuntu", "--cd", &linux_path, "bash", "-ic", &final_cmd])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
         } else {
             Command::new("powershell.exe")
-                .args(["-NoProfile", "-Command", command])
+                .args(["-NoProfile", "-Command", &final_cmd])
                 .current_dir(&working_dir)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -111,7 +171,7 @@ impl ServerManager {
 
         #[cfg(not(target_os = "windows"))]
         let spawn_res = Command::new("bash")
-            .args(["-ic", command])
+            .args(["-ic", &final_cmd])
             .current_dir(&working_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -128,7 +188,7 @@ impl ServerManager {
                     name: project_name.clone(),
                     path: target_path.to_string(),
                     working_dir: working_dir.clone(),
-                    command: command.to_string(),
+                    command: final_cmd.clone(),
                     started_at: now_str.clone(),
                     start_time: now_unix,
                     is_wsl,
@@ -151,7 +211,7 @@ impl ServerManager {
                         "projectId": key,
                         "projectName": project_name,
                         "servers": current_servers,
-                        "text": format!("🚀 [{}] Starting: {}\n📂 Directory: {}\n", project_name, command, working_dir)
+                        "text": format!("🚀 [{}] Starting: {}\n📂 Directory: {}\n", project_name, final_cmd, working_dir)
                     }),
                 );
 

@@ -927,10 +927,75 @@ function getActiveServersSummary() {
 }
 
 function startDevServerProcess(targetPath, command, cwd = null, customName = null) {
-  const workingDir = cwd || targetPath;
+  let workingDir = cwd || targetPath;
+  let cmd = (command || 'npm run dev').trim();
+
+  // 1. Support prefix notation e.g. "backend: php artisan serve"
+  if (cmd.includes(':')) {
+    const colonIdx = cmd.indexOf(':');
+    const prefix = cmd.slice(0, colonIdx).trim();
+    const rest = cmd.slice(colonIdx + 1).trim();
+    if (prefix && rest && !prefix.includes(' ')) {
+      const candidate = path.join(targetPath, prefix);
+      if (fs.existsSync(candidate)) {
+        try {
+          if (fs.statSync(candidate).isDirectory()) {
+            workingDir = candidate;
+            cmd = rest;
+          }
+        } catch {}
+      }
+    }
+  }
+
+  // 2. Auto-align directory if target executable or manifest is in a subfolder
+  try {
+    if (cmd.includes('artisan') && !fs.existsSync(path.join(workingDir, 'artisan'))) {
+      if (fs.existsSync(path.join(workingDir, 'backend', 'artisan'))) {
+        workingDir = path.join(workingDir, 'backend');
+      } else {
+        const subs = fs.readdirSync(workingDir);
+        for (const s of subs) {
+          const subP = path.join(workingDir, s);
+          if (fs.existsSync(path.join(subP, 'artisan'))) {
+            workingDir = subP;
+            break;
+          }
+        }
+      }
+    } else if (/^(npm|yarn|pnpm|bun|vite)\b/.test(cmd) && !fs.existsSync(path.join(workingDir, 'package.json'))) {
+      if (fs.existsSync(path.join(workingDir, 'frontend', 'package.json'))) {
+        workingDir = path.join(workingDir, 'frontend');
+      } else if (fs.existsSync(path.join(workingDir, 'backend', 'package.json'))) {
+        workingDir = path.join(workingDir, 'backend');
+      } else {
+        const subs = fs.readdirSync(workingDir);
+        for (const s of subs) {
+          const subP = path.join(workingDir, s);
+          if (fs.existsSync(path.join(subP, 'package.json'))) {
+            workingDir = subP;
+            break;
+          }
+        }
+      }
+    } else if (cmd.includes('manage.py') && !fs.existsSync(path.join(workingDir, 'manage.py'))) {
+      if (fs.existsSync(path.join(workingDir, 'backend', 'manage.py'))) {
+        workingDir = path.join(workingDir, 'backend');
+      } else {
+        const subs = fs.readdirSync(workingDir);
+        for (const s of subs) {
+          const subP = path.join(workingDir, s);
+          if (fs.existsSync(path.join(subP, 'manage.py'))) {
+            workingDir = subP;
+            break;
+          }
+        }
+      }
+    }
+  } catch {}
+
   const projectKey = normalizePathKey(targetPath);
   const isWsl = isWslPath(workingDir);
-  const cmd = command || 'npm run dev';
   const projectName = customName || path.basename(targetPath) || 'Server';
 
   // Stop any currently running instance for THIS project before restarting

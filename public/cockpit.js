@@ -18,6 +18,8 @@
   const btnExplorer = document.getElementById('btnExplorer');
 
   const scriptSelect = document.getElementById('scriptSelect');
+  const scriptCwdBadge = document.getElementById('scriptCwdBadge');
+  const scriptCwdText = document.getElementById('scriptCwdText');
   const btnStartServer = document.getElementById('btnStartServer');
   const btnStopServer = document.getElementById('btnStopServer');
 
@@ -129,10 +131,33 @@
     return (p || '').toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '');
   }
 
+  function updateScriptCwdDisplay() {
+    if (!scriptCwdBadge || !scriptCwdText) return;
+    const selected = scriptSelect.options[scriptSelect.selectedIndex];
+    if (!selected || !selected.value || selected.value === '__custom__') {
+      scriptCwdBadge.classList.add('hidden');
+      return;
+    }
+    const cwd = selected.getAttribute('data-cwd');
+    if (cwd) {
+      const normCwd = cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+      const normProj = (currentPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+      let rel = normCwd.startsWith(normProj) ? normCwd.slice(normProj.length).replace(/^\/+/, '') : normCwd.split('/').pop();
+      scriptCwdText.textContent = rel || 'root';
+      scriptCwdBadge.classList.remove('hidden');
+    } else {
+      scriptCwdText.textContent = 'root';
+      scriptCwdBadge.classList.remove('hidden');
+    }
+  }
+
   function populateScripts(scripts, defaultScript) {
     scriptSelect.innerHTML = '';
     const projKey = normalizeKey(currentPath);
     const savedCmd = localStorage.getItem('workspace_cmd_' + projKey);
+
+    const isLaravel = defaultScript && defaultScript.includes('artisan');
+    const isStaleNpm = isLaravel && savedCmd && !savedCmd.includes('artisan');
 
     if (!scripts || scripts.length === 0) {
       if (savedCmd) {
@@ -159,18 +184,23 @@
     scripts.forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.command;
-      opt.textContent = `${s.name} (${s.command})`;
-      if (savedCmd && s.command === savedCmd) {
+      opt.setAttribute('data-cwd', s.cwd || '');
+      opt.setAttribute('data-name', s.name || '');
+
+      const label = s.name.includes(':') ? `📁 ${s.name}` : `${s.name} (${s.command})`;
+      opt.textContent = label;
+
+      if (!isStaleNpm && savedCmd && s.command === savedCmd) {
         opt.selected = true;
         hasSelected = true;
-      } else if (!savedCmd && !hasSelected && (s.name === defaultScript || s.command === defaultScript)) {
+      } else if ((!savedCmd || isStaleNpm) && !hasSelected && (s.name === defaultScript || s.command === defaultScript)) {
         opt.selected = true;
         hasSelected = true;
       }
       scriptSelect.appendChild(opt);
     });
 
-    if (savedCmd && !hasSelected) {
+    if (savedCmd && !hasSelected && !isStaleNpm) {
       const customOpt = document.createElement('option');
       customOpt.value = savedCmd;
       customOpt.textContent = `Custom: ${savedCmd}`;
@@ -189,7 +219,7 @@
   function setupScriptSelectHandler(projKey) {
     scriptSelect.onchange = () => {
       if (scriptSelect.value === '__custom__') {
-        const customCmd = prompt('Enter custom terminal command to run for this project:', '');
+        const customCmd = prompt('Enter custom terminal command (e.g. "php artisan serve", "backend: php artisan serve"):', '');
         if (customCmd && customCmd.trim()) {
           const raw = customCmd.trim();
           const opt = document.createElement('option');
@@ -202,12 +232,12 @@
         } else {
           scriptSelect.selectedIndex = 0;
         }
-        return;
-      }
-      if (scriptSelect.value) {
+      } else if (scriptSelect.value) {
         localStorage.setItem('workspace_cmd_' + projKey, scriptSelect.value);
       }
+      updateScriptCwdDisplay();
     };
+    updateScriptCwdDisplay();
   }
 
   // 5. Ports Inspector
@@ -399,14 +429,17 @@
 
   // 8. Server Controls & Live Logging
   btnStartServer.addEventListener('click', async () => {
+    const selectedOpt = scriptSelect.options[scriptSelect.selectedIndex];
     const cmd = scriptSelect.value;
+    const cwd = selectedOpt ? selectedOpt.getAttribute('data-cwd') : null;
     if (!cmd) {
       alert('Please select or specify a command to run.');
       return;
     }
     localStorage.setItem('workspace_cmd_' + normalizeKey(currentPath), cmd);
 
-    appendLog(`[System] Starting: ${cmd}...`, 'system');
+    const folderDesc = cwd ? cwd.replace(/\\/g, '/').split('/').filter(Boolean).pop() : 'root';
+    appendLog(`[System] Starting: ${cmd} (Folder: ${folderDesc})...`, 'system');
     btnStartServer.disabled = true;
 
     try {
@@ -416,6 +449,7 @@
         body: JSON.stringify({
           path: currentPath,
           command: cmd,
+          cwd: cwd || undefined,
           customName: projectName.textContent
         })
       });
