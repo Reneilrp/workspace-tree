@@ -21,14 +21,6 @@
   const btnStartServer = document.getElementById('btnStartServer');
   const btnStopServer = document.getElementById('btnStopServer');
 
-  // Vitals
-  const vitalPorts = document.getElementById('vitalPorts');
-  const vitalPortsText = document.getElementById('vitalPortsText');
-  const vitalGit = document.getElementById('vitalGit');
-  const vitalGitText = document.getElementById('vitalGitText');
-  const vitalStatus = document.getElementById('vitalStatus');
-  const vitalStatusText = document.getElementById('vitalStatusText');
-
   // Badges
   const badgePorts = document.getElementById('badgePorts');
   const badgeLogs = document.getElementById('badgeLogs');
@@ -239,15 +231,11 @@
     const projectPorts = ports.filter(p => p.isProjectPort);
     const displayPorts = (portFilterMode === 'project') ? projectPorts : ports;
 
-    // Vitals and tab badge reflect project status when in project mode, or total
+    // Tab badge reflects active project ports count
     if (projectPorts.length > 0) {
-      vitalPortsText.textContent = `${projectPorts.length} Project Port(s)`;
-      vitalPorts.querySelector('.vital-dot').className = 'vital-dot yellow';
       badgePorts.textContent = projectPorts.length;
       badgePorts.classList.remove('hidden');
     } else {
-      vitalPortsText.textContent = 'All Clear';
-      vitalPorts.querySelector('.vital-dot').className = 'vital-dot green';
       badgePorts.classList.add('hidden');
     }
 
@@ -351,12 +339,8 @@
         if (count > 0) {
           badgeGit.textContent = count;
           badgeGit.classList.remove('hidden');
-          vitalGitText.textContent = `${data.branch || 'Git'} (${count}*)`;
-          vitalGit.querySelector('.vital-dot').className = 'vital-dot yellow';
         } else {
           badgeGit.classList.add('hidden');
-          vitalGitText.textContent = data.branch || 'Git';
-          vitalGit.querySelector('.vital-dot').className = 'vital-dot green';
         }
 
         renderGitChanges(data.files || data.dirtyFiles || []);
@@ -365,8 +349,6 @@
         gitWorkingStatus.textContent = '—';
         gitUncommitted.textContent = '—';
         gitAheadBehind.textContent = '—';
-        vitalGitText.textContent = 'None';
-        vitalGit.querySelector('.vital-dot').className = 'vital-dot gray';
         badgeGit.classList.add('hidden');
         renderGitChanges([]);
       }
@@ -486,14 +468,10 @@
     if (running) {
       btnStartServer.classList.add('hidden');
       btnStopServer.classList.remove('hidden');
-      vitalStatusText.textContent = 'Running';
-      vitalStatus.querySelector('.vital-dot').className = 'vital-dot green';
       badgeLogs.classList.remove('hidden');
     } else {
       btnStartServer.classList.remove('hidden');
       btnStopServer.classList.add('hidden');
-      vitalStatusText.textContent = 'Idle';
-      vitalStatus.querySelector('.vital-dot').className = 'vital-dot gray';
       badgeLogs.classList.add('hidden');
     }
   }
