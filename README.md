@@ -23,7 +23,7 @@ A lightweight, fluid, interactive visual tree on a clean white canvas that branc
 - **🎛️ Detached Project Cockpit Studio (v1.1.0):**
   - Dedicated multi-window companion workspace with live pre-flight diagnostics.
   - **🛡️ Ports & Sockets (Zombie Killer):** Auto-detects occupied dev ports (`3000`, `5173`, `8000`, etc.) and kills dead/zombie processes with 1 click across Windows and WSL.
-  - **🩻 .Env Guard (EnvDrift):** Audits `.env` against `.env.example` templates, highlighting missing variables with a 1-click "Copy Missing Template" button.
+  - **🧭 Git & Branch Diagnostics:** Inspects working branch, remote ahead/behind sync status, and granular uncommitted files with status badges.
   - **📋 Live Stream Terminal:** Monospace streaming output with auto-scroll and process supervisor.
 - **✨ In-App Update Notifier:**
   - Automatic non-blocking GitHub release checking to notify users of future updates.

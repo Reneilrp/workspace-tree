@@ -102,24 +102,6 @@ fn test_server_manager_lifecycle() {
 }
 
 #[test]
-fn test_check_env_drift() {
-    let temp_dir = std::env::temp_dir().join("test_env_drift_app");
-    let _ = fs::create_dir_all(&temp_dir);
-    let _ = fs::write(temp_dir.join(".env"), "PORT=3000\nDATABASE_URL=postgres://localhost\nEXTRA=1\n");
-    let _ = fs::write(temp_dir.join(".env.example"), "PORT=3000\nDATABASE_URL=postgres://...\nAPI_KEY=xyz\n");
-
-    let drift = system_tools::check_env_drift(&temp_dir.to_string_lossy());
-    assert!(drift.success);
-    assert!(drift.has_env);
-    assert!(drift.has_example);
-    assert_eq!(drift.matched_count, 2);
-    assert_eq!(drift.missing_count, 1);
-    assert_eq!(drift.extra_count, 1);
-
-    let _ = fs::remove_dir_all(&temp_dir);
-    println!("test_check_env_drift passed successfully!");
-}
-#[test]
 fn test_laravel_php_detection() {
     let temp_dir = std::env::temp_dir().join("test_laravel_app");
     let _ = fs::create_dir_all(&temp_dir);

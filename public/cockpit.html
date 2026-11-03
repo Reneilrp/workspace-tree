@@ -69,11 +69,6 @@
       <span class="vital-label">Ports:</span>
       <span class="vital-value" id="vitalPortsText">Scanning...</span>
     </div>
-    <div class="vital-item" id="vitalEnv">
-      <span class="vital-dot gray"></span>
-      <span class="vital-label">.Env Guard:</span>
-      <span class="vital-value" id="vitalEnvText">Checking...</span>
-    </div>
     <div class="vital-item" id="vitalGit">
       <span class="vital-dot gray"></span>
       <span class="vital-label">Git:</span>
@@ -91,10 +86,6 @@
     <button class="tab-btn active" data-tab="tabPorts">
       <span class="tab-icon">🛡️</span> Ports & Sockets
       <span id="badgePorts" class="tab-badge hidden">0</span>
-    </button>
-    <button class="tab-btn" data-tab="tabEnv">
-      <span class="tab-icon">🩻</span> .Env Guard
-      <span id="badgeEnv" class="tab-badge warning hidden">!</span>
     </button>
     <button class="tab-btn" data-tab="tabLogs">
       <span class="tab-icon">📋</span> Console & Logs
@@ -145,55 +136,7 @@
       </div>
     </section>
 
-    <!-- TAB 2: .ENV GUARD -->
-    <section id="tabEnv" class="tab-pane">
-      <div class="pane-toolbar">
-        <div class="toolbar-title">Environment Variables & Drift Audit</div>
-        <div class="toolbar-actions">
-          <button id="btnCopyMissing" class="pill-btn" title="Copy missing keys as template">📋 Copy Missing Template</button>
-          <button id="btnRefreshEnv" class="pill-btn">🔄 Re-check</button>
-        </div>
-      </div>
-
-      <div class="env-summary-cards">
-        <div class="summary-card" id="cardEnvStatus">
-          <div class="card-num" id="statEnvFile">—</div>
-          <div class="card-label">Active .env File</div>
-        </div>
-        <div class="summary-card" id="cardExampleStatus">
-          <div class="card-num" id="statExampleFile">—</div>
-          <div class="card-label">Template (.env.example)</div>
-        </div>
-        <div class="summary-card warning" id="cardMissingCount">
-          <div class="card-num" id="statMissingCount">0</div>
-          <div class="card-label">Missing Keys</div>
-        </div>
-        <div class="summary-card success" id="cardMatchedCount">
-          <div class="card-num" id="statMatchedCount">0</div>
-          <div class="card-label">Configured Keys</div>
-        </div>
-      </div>
-
-      <div class="env-table-wrap">
-        <table class="data-table" id="envTable">
-          <thead>
-            <tr>
-              <th>Variable Key</th>
-              <th>Status</th>
-              <th>In .env</th>
-              <th>Example / Template Hint</th>
-            </tr>
-          </thead>
-          <tbody id="envTableBody">
-            <tr>
-              <td colspan="4" class="table-empty">Analyzing environment variables...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- TAB 3: CONSOLE & LOGS -->
+    <!-- TAB 2: CONSOLE & LOGS -->
     <section id="tabLogs" class="tab-pane">
       <div class="pane-toolbar">
         <div class="toolbar-title" id="logsTitle">Process Console Output</div>

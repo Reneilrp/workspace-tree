@@ -230,35 +230,3 @@ pub struct ServerStatusResponse {
     pub running: bool,
     pub servers: Vec<RunningServerSummary>,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnvKeyItem {
-    pub key: String,
-    pub status: String, // "matched" | "missing" | "extra"
-    #[serde(rename = "exampleValue", skip_serializing_if = "Option::is_none")]
-    pub example_value: Option<String>,
-    #[serde(rename = "hasValue")]
-    pub has_value: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnvDriftResponse {
-    pub success: bool,
-    #[serde(rename = "hasEnv")]
-    pub has_env: bool,
-    #[serde(rename = "hasExample")]
-    pub has_example: bool,
-    #[serde(rename = "envFile", skip_serializing_if = "Option::is_none")]
-    pub env_file: Option<String>,
-    #[serde(rename = "exampleFile", skip_serializing_if = "Option::is_none")]
-    pub example_file: Option<String>,
-    pub keys: Vec<EnvKeyItem>,
-    #[serde(rename = "missingCount")]
-    pub missing_count: usize,
-    #[serde(rename = "matchedCount")]
-    pub matched_count: usize,
-    #[serde(rename = "extraCount")]
-    pub extra_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}

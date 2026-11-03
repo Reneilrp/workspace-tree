@@ -455,42 +455,6 @@ body.cockpit-body {
   border-radius: 6px;
 }
 
-/* Env Summary Cards */
-.env-summary-cards {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-.summary-card {
-  background: #ffffff;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 14px;
-  box-shadow: var(--shadow-sm);
-}
-
-.summary-card .card-num {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-main);
-  margin-bottom: 2px;
-}
-
-.summary-card .card-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
-.summary-card.warning .card-num {
-  color: var(--warning-color);
-}
-
-.summary-card.success .card-num {
-  color: var(--success-color);
-}
-
 .env-status-pill {
   display: inline-block;
   font-size: 11px;

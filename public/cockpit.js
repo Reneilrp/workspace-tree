@@ -24,8 +24,6 @@
   // Vitals
   const vitalPorts = document.getElementById('vitalPorts');
   const vitalPortsText = document.getElementById('vitalPortsText');
-  const vitalEnv = document.getElementById('vitalEnv');
-  const vitalEnvText = document.getElementById('vitalEnvText');
   const vitalGit = document.getElementById('vitalGit');
   const vitalGitText = document.getElementById('vitalGitText');
   const vitalStatus = document.getElementById('vitalStatus');
@@ -33,28 +31,17 @@
 
   // Badges
   const badgePorts = document.getElementById('badgePorts');
-  const badgeEnv = document.getElementById('badgeEnv');
   const badgeLogs = document.getElementById('badgeLogs');
   const badgeGit = document.getElementById('badgeGit');
 
   // Tables
   const portsTableBody = document.getElementById('portsTableBody');
-  const envTableBody = document.getElementById('envTableBody');
   const btnRefreshPorts = document.getElementById('btnRefreshPorts');
-  const btnRefreshEnv = document.getElementById('btnRefreshEnv');
-  const btnCopyMissing = document.getElementById('btnCopyMissing');
   const btnRefreshGit = document.getElementById('btnRefreshGit');
   const btnFilterProjectPorts = document.getElementById('btnFilterProjectPorts');
   const btnFilterAllPorts = document.getElementById('btnFilterAllPorts');
   const gitChangesCount = document.getElementById('gitChangesCount');
   const gitChangesBody = document.getElementById('gitChangesBody');
-
-  // Env stats
-  const statEnvFile = document.getElementById('statEnvFile');
-  const statExampleFile = document.getElementById('statExampleFile');
-  const statMissingCount = document.getElementById('statMissingCount');
-  const statMatchedCount = document.getElementById('statMatchedCount');
-  let currentMissingTemplate = '';
 
   // Logs
   const terminalOutput = document.getElementById('terminalOutput');
@@ -142,7 +129,6 @@
 
     // Load diagnostics
     refreshPorts();
-    refreshEnvDrift();
     refreshGitStatus();
     checkServerStatus();
   }
@@ -338,89 +324,6 @@
   };
 
   btnRefreshPorts.addEventListener('click', refreshPorts);
-
-  // 6. Env Drift Guard
-  async function refreshEnvDrift() {
-    if (!currentPath) return;
-    try {
-      const res = await fetch(`/api/env-drift?path=${encodeURIComponent(currentPath)}`);
-      const data = await res.json();
-      renderEnvDrift(data);
-    } catch {
-      envTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">Failed to check .env status</td></tr>`;
-    }
-  }
-
-  function renderEnvDrift(data) {
-    if (!data.success) {
-      envTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">No environment files detected</td></tr>`;
-      return;
-    }
-
-    statEnvFile.textContent = data.hasEnv ? data.envFile : 'Not Found';
-    statExampleFile.textContent = data.hasExample ? data.exampleFile : 'None';
-    statMissingCount.textContent = data.missingCount || 0;
-    statMatchedCount.textContent = data.matchedCount || 0;
-
-    const dot = vitalEnv.querySelector('.vital-dot');
-    if (data.missingCount > 0) {
-      vitalEnvText.textContent = `${data.missingCount} Missing Key(s)`;
-      dot.className = 'vital-dot yellow';
-      badgeEnv.classList.remove('hidden');
-    } else if (data.hasEnv) {
-      vitalEnvText.textContent = 'All Configured';
-      dot.className = 'vital-dot green';
-      badgeEnv.classList.add('hidden');
-    } else {
-      vitalEnvText.textContent = 'No .env';
-      dot.className = 'vital-dot gray';
-      badgeEnv.classList.add('hidden');
-    }
-
-    const missingKeys = (data.keys || []).filter(k => k.status === 'missing');
-    currentMissingTemplate = missingKeys.map(k => `${k.key}=${k.exampleValue || ''}`).join('\n');
-
-    if (!data.keys || data.keys.length === 0) {
-      envTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">No environment variables found</td></tr>`;
-      return;
-    }
-
-    envTableBody.innerHTML = data.keys.map(k => {
-      let statusChip = '';
-      if (k.status === 'matched') {
-        statusChip = '<span class="env-status-pill matched">Configured</span>';
-      } else if (k.status === 'missing') {
-        statusChip = '<span class="env-status-pill missing">Missing</span>';
-      } else {
-        statusChip = '<span class="env-status-pill extra">Local Extra</span>';
-      }
-
-      const hasValText = k.hasValue ? '🟢 Yes' : (k.status === 'missing' ? '❌ No' : '⚪ Empty');
-      const hint = k.exampleValue ? `<code>${k.exampleValue}</code>` : '—';
-
-      return `
-        <tr>
-          <td><strong>${k.key}</strong></td>
-          <td>${statusChip}</td>
-          <td>${hasValText}</td>
-          <td>${hint}</td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  btnCopyMissing.addEventListener('click', () => {
-    if (!currentMissingTemplate) {
-      alert('No missing keys to copy!');
-      return;
-    }
-    navigator.clipboard.writeText(currentMissingTemplate);
-    const oldText = btnCopyMissing.textContent;
-    btnCopyMissing.textContent = '✅ Copied!';
-    setTimeout(() => { btnCopyMissing.textContent = oldText; }, 2000);
-  });
-
-  btnRefreshEnv.addEventListener('click', refreshEnvDrift);
 
   // Helper
   function escapeHtml(str) {

@@ -6,7 +6,7 @@ pub mod system_tools;
 
 use dev_server::ServerManager;
 use models::{
-    ActionResponse, ActivePortsResponse, BrowseResult, EnvDriftResponse, FileContentResponse,
+    ActionResponse, ActivePortsResponse, BrowseResult, FileContentResponse,
     GitStatusResponse, ProjectDetailsResult, RootItem, SearchResultItem, ServerStatusResponse,
     StorageCleanResponse, StorageFootprintResponse, TranslatePathResponse,
 };
@@ -184,16 +184,6 @@ fn open_project_cockpit(app: AppHandle, path: String) -> ActionResponse {
     }
 }
 
-#[tauri::command]
-fn check_env_drift(path: String) -> EnvDriftResponse {
-    system_tools::check_env_drift(&path)
-}
-
-#[tauri::command]
-fn save_env_file(path: String, content: String) -> ActionResponse {
-    system_tools::save_env_file(&path, &content)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -217,8 +207,6 @@ pub fn run() {
             stop_server,
             get_server_status,
             open_project_cockpit,
-            check_env_drift,
-            save_env_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
