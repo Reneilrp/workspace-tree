@@ -18,6 +18,17 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false
+      },
+      {
+        "label": "cockpit",
+        "title": "Project Cockpit — Workspace Tree",
+        "url": "cockpit.html",
+        "width": 960,
+        "height": 680,
+        "minWidth": 720,
+        "minHeight": 520,
+        "resizable": true,
+        "visible": false
       }
     ],
     "security": {

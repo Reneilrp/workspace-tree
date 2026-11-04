@@ -131,7 +131,7 @@ fn get_server_status(state: State<'_, ServerManager>) -> ServerStatusResponse {
 }
 
 #[tauri::command]
-fn open_project_cockpit(app: AppHandle, path: String) -> ActionResponse {
+async fn open_project_cockpit(app: AppHandle, path: String) -> ActionResponse {
     let window_label = "cockpit";
 
     if let Some(window) = app.get_webview_window(window_label) {
@@ -141,7 +141,7 @@ fn open_project_cockpit(app: AppHandle, path: String) -> ActionResponse {
         let _ = window.emit("switch-project", serde_json::json!({ "path": path }));
         return ActionResponse {
             success: true,
-            message: Some("Cockpit focused".to_string()),
+            message: Some("Cockpit opened".to_string()),
             error: None,
         };
     }
@@ -156,14 +156,18 @@ fn open_project_cockpit(app: AppHandle, path: String) -> ActionResponse {
         .inner_size(960.0, 680.0)
         .min_inner_size(720.0, 520.0)
         .resizable(true)
+        .devtools(true)
         .initialization_script(&init_script);
 
     match builder.build() {
-        Ok(_) => ActionResponse {
-            success: true,
-            message: Some("Cockpit opened".to_string()),
-            error: None,
-        },
+        Ok(window) => {
+            let _ = window.emit("switch-project", serde_json::json!({ "path": path }));
+            ActionResponse {
+                success: true,
+                message: Some("Cockpit opened".to_string()),
+                error: None,
+            }
+        }
         Err(e) => ActionResponse {
             success: false,
             message: None,
@@ -177,6 +181,14 @@ pub fn run() {
     tauri::Builder::default()
         .manage(ServerManager::new())
         .plugin(tauri_plugin_log::Builder::default().build())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "cockpit" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_roots,
             browse_directory,
