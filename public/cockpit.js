@@ -48,9 +48,9 @@
   const gitUncommitted = document.getElementById('gitUncommitted');
   const gitAheadBehind = document.getElementById('gitAheadBehind');
 
-  // 1. Initial Load from Query Params
+  // 1. Initial Load from Query Params or Injected Global
   const params = new URLSearchParams(window.location.search);
-  const initialPath = params.get('path');
+  const initialPath = params.get('path') || window.__INITIAL_PROJECT_PATH__;
   if (initialPath) {
     loadProject(initialPath);
   } else {
