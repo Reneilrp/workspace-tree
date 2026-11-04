@@ -1,6 +1,6 @@
 {
   "name": "workspace-tree",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Smooth animated dual-branch visual workspace navigator for Windows and Ubuntu",
   "main": "server.js",
   "type": "module",
