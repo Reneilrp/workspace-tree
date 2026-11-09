@@ -212,9 +212,10 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
             let mut ahead_behind = None;
             let mut files = Vec::new();
 
-            for line in stdout.lines() {
-                let trimmed = line.trim();
-                if trimmed.starts_with("##") {
+            for raw_line in stdout.lines() {
+                let line = raw_line.trim_end_matches(['\r', '\n']);
+                if line.trim().starts_with("##") {
+                    let trimmed = line.trim();
                     let parts: Vec<&str> = trimmed.trim_start_matches("##").trim().split("...").collect();
                     if let Some(b) = parts.first() {
                         let branch_name = b.split_whitespace().next().unwrap_or(*b);
@@ -225,15 +226,18 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
                             ahead_behind = Some(trimmed[start + 1..end].to_string());
                         }
                     }
-                } else if !trimmed.is_empty() {
+                } else if !line.trim().is_empty() {
                     uncommitted += 1;
-                    let (st_code, file_path) = if trimmed.len() >= 3 {
-                        (&trimmed[0..2], trimmed[3..].trim())
+                    // In porcelain v1, format is XY <path> (XY 2-chars, space at index 2, path at index 3+)
+                    let (st_code, file_path) = if line.len() >= 3 {
+                        let code = line[0..2].trim();
+                        let path = line[3..].trim();
+                        (if code.is_empty() { "M" } else { code }, path)
                     } else {
-                        ("M", trimmed)
+                        ("M", line.trim())
                     };
                     files.push(GitFileChange {
-                        status: st_code.trim().to_string(),
+                        status: st_code.to_string(),
                         path: file_path.to_string(),
                     });
                 }

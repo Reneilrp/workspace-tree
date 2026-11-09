@@ -1258,23 +1258,24 @@ async function getGitStatus(targetPath) {
         return;
       }
 
-      const lines = stdout.split('\n').map(l => l.trim()).filter(Boolean);
+      const lines = stdout.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim().length > 0);
       let branch = 'unknown';
       let ahead = 0;
       let behind = 0;
       const dirtyFiles = [];
 
       for (const line of lines) {
-        if (line.startsWith('##')) {
-          const branchMatch = line.match(/^##\s+([^.\s]+)/);
+        if (line.trim().startsWith('##')) {
+          const branchMatch = line.trim().match(/^##\s+([^.\s]+)/);
           if (branchMatch) branch = branchMatch[1];
           const aheadMatch = line.match(/ahead\s+(\d+)/);
           if (aheadMatch) ahead = parseInt(aheadMatch[1], 10);
           const behindMatch = line.match(/behind\s+(\d+)/);
           if (behindMatch) behind = parseInt(behindMatch[1], 10);
         } else {
-          const status = line.slice(0, 2).trim();
-          const file = line.slice(3).trim();
+          // In porcelain v1, format is XY <path>
+          const status = (line.length >= 2 ? line.slice(0, 2).trim() : 'M') || 'M';
+          const file = line.length >= 3 ? line.slice(3).trim() : line.trim();
           dirtyFiles.push({ status, file });
         }
       }
