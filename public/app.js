@@ -3958,7 +3958,7 @@ requestAnimationFrame(render);
 // ==========================================
 // 15. AUTO-UPDATE CHECKER (GitHub Releases)
 // ==========================================
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.1.3';
 const GITHUB_REPO = 'Reneilrp/workspace-tree';
 
 function isNewerVersion(remoteTag, localVer) {
