@@ -429,6 +429,7 @@ function createNode(data, parent, sideDirection) {
   };
 
   if (isProj && data.path) {
+    const jitter = Math.floor(Math.random() * 300);
     setTimeout(() => {
       fetch(`/api/git-status?path=${encodeURIComponent(data.path)}`)
         .then(r => r.json())
@@ -437,7 +438,7 @@ function createNode(data, parent, sideDirection) {
             node.gitStatus = res;
           }
         }).catch(() => {});
-    }, 150);
+    }, 150 + jitter);
   }
 
   return node;
@@ -3957,7 +3958,7 @@ requestAnimationFrame(render);
 // ==========================================
 // 15. AUTO-UPDATE CHECKER (GitHub Releases)
 // ==========================================
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.1.2';
 const GITHUB_REPO = 'Reneilrp/workspace-tree';
 
 function isNewerVersion(remoteTag, localVer) {

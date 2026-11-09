@@ -166,6 +166,8 @@ pub struct ActivePortItem {
     pub is_project_port: Option<bool>,
     #[serde(rename = "projectName", skip_serializing_if = "Option::is_none")]
     pub project_name: Option<String>,
+    #[serde(rename = "os", skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
+use std::time::Instant;
 
 use crate::models::{
     BrowseItem, BrowseResult, ProjectDetails, ProjectDetailsResult, RootItem, ScriptItem,
@@ -94,7 +96,17 @@ pub fn normalize_path_cmp(p: &str) -> String {
     p.replace('\\', "/").to_lowercase().trim_end_matches('/').to_string()
 }
 
+static ROOTS_CACHE: Mutex<Option<(Instant, Vec<RootItem>)>> = Mutex::new(None);
+
 pub fn get_roots() -> Vec<RootItem> {
+    if let Ok(guard) = ROOTS_CACHE.lock() {
+        if let Some((ts, ref cached)) = *guard {
+            if ts.elapsed().as_secs() < 30 {
+                return cached.clone();
+            }
+        }
+    }
+
     let mut roots = Vec::new();
 
     #[cfg(target_os = "windows")]
@@ -210,6 +222,10 @@ pub fn get_roots() -> Vec<RootItem> {
                 disabled: None,
             });
         }
+    }
+
+    if let Ok(mut guard) = ROOTS_CACHE.lock() {
+        *guard = Some((Instant::now(), roots.clone()));
     }
 
     roots

@@ -13,60 +13,100 @@ use models::{
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
-fn get_roots() -> Vec<RootItem> {
-    fs_scanner::get_roots()
+async fn get_roots() -> Vec<RootItem> {
+    tauri::async_runtime::spawn_blocking(fs_scanner::get_roots)
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-fn browse_directory(
+async fn browse_directory(
     path: String,
     max_items: Option<usize>,
     show_hidden: Option<String>,
     projects_only: Option<bool>,
 ) -> BrowseResult {
-    fs_scanner::browse_directory(
-        &path,
-        max_items.unwrap_or(120),
-        show_hidden.as_deref(),
-        projects_only.unwrap_or(true),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_scanner::browse_directory(
+            &path,
+            max_items.unwrap_or(120),
+            show_hidden.as_deref(),
+            projects_only.unwrap_or(true),
+        )
+    })
+    .await
+    .unwrap_or_else(|e| BrowseResult {
+        success: false,
+        path: String::new(),
+        items: Vec::new(),
+        total_folders: 0,
+        total_files: 0,
+        is_root: false,
+        error: Some(e.to_string()),
+    })
 }
 
 #[tauri::command]
-fn get_project_details(path: String) -> ProjectDetailsResult {
-    fs_scanner::get_project_details(&path)
+async fn get_project_details(path: String) -> ProjectDetailsResult {
+    tauri::async_runtime::spawn_blocking(move || fs_scanner::get_project_details(&path))
+        .await
+        .unwrap_or_else(|e| ProjectDetailsResult {
+            success: false,
+            details: None,
+            error: Some(e.to_string()),
+        })
 }
 
 #[tauri::command]
-fn search_paths(
+async fn search_paths(
     query: String,
     show_hidden: Option<String>,
     projects_only: Option<bool>,
 ) -> Vec<SearchResultItem> {
-    fs_scanner::search_paths(
-        &query,
-        show_hidden.as_deref(),
-        projects_only.unwrap_or(true),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_scanner::search_paths(
+            &query,
+            show_hidden.as_deref(),
+            projects_only.unwrap_or(true),
+        )
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
-fn launch_action(
+async fn launch_action(
     action: String,
     path: String,
     custom_title: Option<String>,
 ) -> ActionResponse {
-    launcher::launch_action(&action, &path, custom_title.as_deref())
+    tauri::async_runtime::spawn_blocking(move || {
+        launcher::launch_action(&action, &path, custom_title.as_deref())
+    })
+    .await
+    .unwrap_or_else(|e| ActionResponse {
+        success: false,
+        message: None,
+        error: Some(e.to_string()),
+    })
 }
 
 #[tauri::command]
-fn run_terminal(
+async fn run_terminal(
     path: String,
     command: Option<String>,
     cwd: Option<String>,
     custom_title: Option<String>,
 ) -> ActionResponse {
-    launcher::run_terminal(&path, command.as_deref(), cwd.as_deref(), custom_title.as_deref())
+    tauri::async_runtime::spawn_blocking(move || {
+        launcher::run_terminal(&path, command.as_deref(), cwd.as_deref(), custom_title.as_deref())
+    })
+    .await
+    .unwrap_or_else(|e| ActionResponse {
+        success: false,
+        message: None,
+        error: Some(e.to_string()),
+    })
 }
 
 #[tauri::command]
@@ -75,33 +115,79 @@ fn translate_path(path: String) -> TranslatePathResponse {
 }
 
 #[tauri::command]
-fn get_file_content(path: String) -> FileContentResponse {
-    system_tools::get_file_content(&path)
+async fn get_file_content(path: String) -> FileContentResponse {
+    tauri::async_runtime::spawn_blocking(move || system_tools::get_file_content(&path))
+        .await
+        .unwrap_or_else(|e| FileContentResponse {
+            success: false,
+            path: String::new(),
+            content: None,
+            size: None,
+            is_binary: None,
+            error: Some(e.to_string()),
+        })
 }
 
 #[tauri::command]
-fn get_git_status(path: String) -> GitStatusResponse {
-    system_tools::get_git_status(&path)
+async fn get_git_status(path: String) -> GitStatusResponse {
+    tauri::async_runtime::spawn_blocking(move || system_tools::get_git_status(&path))
+        .await
+        .unwrap_or_else(|_| GitStatusResponse {
+            success: true,
+            is_git: false,
+            branch: None,
+            status: None,
+            ahead_behind: None,
+            uncommitted_count: None,
+            files: Vec::new(),
+        })
 }
 
 #[tauri::command]
-fn get_active_ports(path: Option<String>) -> ActivePortsResponse {
-    system_tools::get_active_ports(path.as_deref())
+async fn get_active_ports(path: Option<String>) -> ActivePortsResponse {
+    tauri::async_runtime::spawn_blocking(move || system_tools::get_active_ports(path.as_deref()))
+        .await
+        .unwrap_or_else(|_| ActivePortsResponse {
+            success: true,
+            ports: Vec::new(),
+            project_port_count: Some(0),
+        })
 }
 
 #[tauri::command]
-fn kill_port(target_port: u16, target_pid: Option<u32>) -> ActionResponse {
-    system_tools::kill_port(target_port, target_pid)
+async fn kill_port(target_port: u16, target_pid: Option<u32>) -> ActionResponse {
+    tauri::async_runtime::spawn_blocking(move || system_tools::kill_port(target_port, target_pid))
+        .await
+        .unwrap_or_else(|e| ActionResponse {
+            success: false,
+            message: None,
+            error: Some(e.to_string()),
+        })
 }
 
 #[tauri::command]
-fn get_storage_footprint(path: String) -> StorageFootprintResponse {
-    system_tools::get_storage_footprint(&path)
+async fn get_storage_footprint(path: String) -> StorageFootprintResponse {
+    tauri::async_runtime::spawn_blocking(move || system_tools::get_storage_footprint(&path))
+        .await
+        .unwrap_or_else(|_| StorageFootprintResponse {
+            success: false,
+            path: String::new(),
+            artifacts: Vec::new(),
+            total_bytes: 0,
+            formatted_total: "0 B".to_string(),
+        })
 }
 
 #[tauri::command]
-fn clean_storage(path: String, targets: Vec<String>) -> StorageCleanResponse {
-    system_tools::clean_storage(&path, targets)
+async fn clean_storage(path: String, targets: Vec<String>) -> StorageCleanResponse {
+    tauri::async_runtime::spawn_blocking(move || system_tools::clean_storage(&path, targets))
+        .await
+        .unwrap_or_else(|e| StorageCleanResponse {
+            success: false,
+            freed_bytes: 0,
+            formatted_freed: "0 B".to_string(),
+            message: e.to_string(),
+        })
 }
 
 #[tauri::command]

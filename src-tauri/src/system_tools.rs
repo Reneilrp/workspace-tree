@@ -1,7 +1,9 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::Instant;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -147,11 +149,24 @@ pub fn get_file_content(target_path: &str) -> FileContentResponse {
     }
 }
 
+static GIT_STATUS_CACHE: Mutex<Option<HashMap<String, (Instant, GitStatusResponse)>>> = Mutex::new(None);
+
 pub fn get_git_status(target_path: &str) -> GitStatusResponse {
+    let cache_key = target_path.to_lowercase().replace('\\', "/");
+    if let Ok(guard) = GIT_STATUS_CACHE.lock() {
+        if let Some(ref map) = *guard {
+            if let Some((ts, cached)) = map.get(&cache_key) {
+                if ts.elapsed().as_secs() < 15 {
+                    return cached.clone();
+                }
+            }
+        }
+    }
+
     let p = Path::new(target_path);
     let git_dir = p.join(".git");
     if !git_dir.exists() {
-        return GitStatusResponse {
+        let res = GitStatusResponse {
             success: true,
             is_git: false,
             branch: None,
@@ -160,6 +175,11 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
             uncommitted_count: None,
             files: Vec::new(),
         };
+        if let Ok(mut guard) = GIT_STATUS_CACHE.lock() {
+            let map = guard.get_or_insert_with(HashMap::new);
+            map.insert(cache_key, (Instant::now(), res.clone()));
+        }
+        return res;
     }
 
     #[cfg(target_os = "windows")]
@@ -184,7 +204,7 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
         .args(["-C", target_path, "status", "--porcelain=v1", "-b"])
         .output();
 
-    match output {
+    let res = match output {
         Ok(out) if out.status.success() => {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let mut branch = "unknown".to_string();
@@ -238,7 +258,14 @@ pub fn get_git_status(target_path: &str) -> GitStatusResponse {
             uncommitted_count: Some(0),
             files: Vec::new(),
         },
+    };
+
+    if let Ok(mut guard) = GIT_STATUS_CACHE.lock() {
+        let map = guard.get_or_insert_with(HashMap::new);
+        map.insert(cache_key, (Instant::now(), res.clone()));
     }
+
+    res
 }
 
 pub fn get_active_ports(target_path: Option<&str>) -> ActivePortsResponse {
@@ -268,9 +295,25 @@ pub fn get_active_ports(target_path: Option<&str>) -> ActivePortsResponse {
             }
         }
 
-        if p.join("artisan").exists() || p.join("backend").join("artisan").exists() {
-            project_expected_ports.insert(8000);
-            project_expected_ports.insert(5173);
+        for dir in &[p.to_path_buf(), p.join("frontend"), p.join("backend")] {
+            if dir.join("artisan").exists() {
+                project_expected_ports.insert(8000);
+                project_expected_ports.insert(5173);
+            }
+            if dir.join("vite.config.ts").exists() || dir.join("vite.config.js").exists() || dir.join("vite.config.mjs").exists() {
+                project_expected_ports.insert(5173);
+                project_expected_ports.insert(5174);
+            }
+            if let Ok(pkg_raw) = fs::read_to_string(dir.join("package.json")) {
+                if pkg_raw.contains("\"vite\"") {
+                    project_expected_ports.insert(5173);
+                    project_expected_ports.insert(5174);
+                }
+                if pkg_raw.contains("\"next\"") || pkg_raw.contains("\"nuxt\"") {
+                    project_expected_ports.insert(3000);
+                    project_expected_ports.insert(3001);
+                }
+            }
         }
     }
 
@@ -320,6 +363,64 @@ pub fn get_active_ports(target_path: Option<&str>) -> ActivePortsResponse {
                                     } else {
                                         None
                                     },
+                                    os: Some("windows".to_string()),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // WSL Port Scanning
+        if let Ok(wsl_out) = Command::new("wsl.exe")
+            .args(["-d", "Ubuntu", "sh", "-c", "ss -tlpn 2>/dev/null"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&wsl_out.stdout);
+            for line in stdout.lines() {
+                if !line.contains("LISTEN") {
+                    continue;
+                }
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 4 {
+                    let local_addr = parts[3];
+                    if let Some(pos) = local_addr.rfind(':') {
+                        if let Ok(port) = local_addr[pos + 1..].parse::<u16>() {
+                            if port == 7337 {
+                                continue;
+                            }
+                            let is_proj = project_expected_ports.contains(&port);
+                            let is_dev_port = is_proj
+                                || (3000..=3010).contains(&port)
+                                || (5170..=5185).contains(&port)
+                                || (8000..=8090).contains(&port)
+                                || (19000..=19010).contains(&port)
+                                || port == 4000
+                                || port == 4200;
+
+                            if is_dev_port && !ports.iter().any(|p: &ActivePortItem| p.port == port) {
+                                let pid = if let Some(idx) = line.find("pid=") {
+                                    let rest = &line[idx + 4..];
+                                    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                                    digits.parse::<u32>().ok()
+                                } else {
+                                    None
+                                };
+
+                                ports.push(ActivePortItem {
+                                    port,
+                                    pid,
+                                    name: Some(if is_proj { format!("Port {} (Project)", port) } else { format!("Port {} [WSL]", port) }),
+                                    protocol: "TCP".to_string(),
+                                    is_project_port: Some(is_proj),
+                                    project_name: if is_proj {
+                                        target_path.and_then(|s| Path::new(s).file_name().map(|n| n.to_string_lossy().to_string()))
+                                    } else {
+                                        None
+                                    },
+                                    os: Some("wsl".to_string()),
                                 });
                             }
                         }
@@ -356,6 +457,7 @@ pub fn get_active_ports(target_path: Option<&str>) -> ActivePortsResponse {
                                     } else {
                                         None
                                     },
+                                    os: Some("linux".to_string()),
                                 });
                             }
                         }
@@ -389,6 +491,10 @@ pub fn kill_port(target_port: u16, target_pid: Option<u32>) -> ActionResponse {
                 .args(["/F", "/PID", &pid.to_string(), "/T"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
+            let _ = Command::new("wsl.exe")
+                .args(["-d", "Ubuntu", "sh", "-c", &format!("kill -9 {} 2>/dev/null", pid)])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
         }
 
         if let Ok(out) = Command::new("netstat")
@@ -414,7 +520,7 @@ pub fn kill_port(target_port: u16, target_pid: Option<u32>) -> ActionResponse {
         }
 
         let _ = Command::new("wsl.exe")
-            .args(["-d", "Ubuntu", "fuser", "-k", &format!("{}/tcp", target_port)])
+            .args(["-d", "Ubuntu", "sh", "-c", &format!("fuser -k {}/tcp 2>/dev/null", target_port)])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
     }

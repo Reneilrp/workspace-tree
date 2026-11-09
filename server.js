@@ -1308,6 +1308,47 @@ async function getGitStatus(targetPath) {
 // ==========================================
 // 3. ACTIVE DEV SERVERS & PORT MONITOR
 // ==========================================
+function scanWslListeningPorts() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve([]);
+    exec('wsl.exe -d Ubuntu sh -c "ss -tlpn 2>/dev/null"', { windowsHide: true, timeout: 3500 }, (err, stdout) => {
+      if (err || !stdout) return resolve([]);
+      const wslPorts = [];
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        if (!line.includes('LISTEN')) continue;
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 4) continue;
+        const localAddr = parts[3];
+        const lastColon = localAddr.lastIndexOf(':');
+        if (lastColon === -1) continue;
+        const port = parseInt(localAddr.slice(lastColon + 1), 10);
+        if (!port || port === 7337) continue;
+
+        let pid = null;
+        const pidMatch = line.match(/pid=(\d+)/);
+        if (pidMatch) {
+          pid = parseInt(pidMatch[1], 10);
+        }
+
+        let procName = null;
+        const procMatch = line.match(/users:\(\("([^"]+)"/);
+        if (procMatch) {
+          procName = procMatch[1];
+        }
+
+        wslPorts.push({
+          port,
+          pid,
+          procName,
+          address: localAddr
+        });
+      }
+      resolve(wslPorts);
+    });
+  });
+}
+
 async function getActiveListeningPorts(targetPath = null) {
   const projectPorts = new Set();
   if (targetPath) {
@@ -1315,7 +1356,8 @@ async function getActiveListeningPorts(targetPath = null) {
       const envFiles = [
         path.join(targetPath, '.env'),
         path.join(targetPath, '.env.local'),
-        path.join(targetPath, 'backend', '.env')
+        path.join(targetPath, 'backend', '.env'),
+        path.join(targetPath, 'frontend', '.env')
       ];
       for (const envF of envFiles) {
         if (fs.existsSync(envF)) {
@@ -1341,61 +1383,118 @@ async function getActiveListeningPorts(targetPath = null) {
         }
       }
 
-      if (fs.existsSync(path.join(targetPath, 'artisan')) || fs.existsSync(path.join(targetPath, 'backend', 'artisan'))) {
-        projectPorts.add(8000);
-        projectPorts.add(5173);
+      // Framework auto-detection (Vite, Next, Laravel, etc.)
+      const checkDirs = [targetPath, path.join(targetPath, 'frontend'), path.join(targetPath, 'backend')];
+      for (const d of checkDirs) {
+        if (fs.existsSync(path.join(d, 'artisan'))) {
+          projectPorts.add(8000);
+          projectPorts.add(5173);
+        }
+        if (fs.existsSync(path.join(d, 'vite.config.ts')) || fs.existsSync(path.join(d, 'vite.config.js')) || fs.existsSync(path.join(d, 'vite.config.mjs'))) {
+          projectPorts.add(5173);
+          projectPorts.add(5174);
+        }
+        const pkgJson = path.join(d, 'package.json');
+        if (fs.existsSync(pkgJson)) {
+          try {
+            const pkgRaw = fs.readFileSync(pkgJson, 'utf8');
+            if (pkgRaw.includes('"vite"')) {
+              projectPorts.add(5173);
+              projectPorts.add(5174);
+            }
+            if (pkgRaw.includes('"next"') || pkgRaw.includes('"nuxt"')) {
+              projectPorts.add(3000);
+              projectPorts.add(3001);
+            }
+          } catch {}
+        }
       }
     } catch {}
   }
 
-  return new Promise((resolve) => {
-    exec('netstat -ano -p tcp', { windowsHide: true }, (err, stdout) => {
-      const activePorts = [];
-      if (!err && stdout) {
-        const lines = stdout.split('\n');
-        for (const line of lines) {
-          if (!line.includes('LISTENING')) continue;
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 4) {
-            const localAddr = parts[1];
-            const pidStr = parts[parts.length - 1];
-            const pid = parseInt(pidStr, 10) || null;
-            const portMatch = localAddr.match(/:(\d+)$/);
-            if (portMatch) {
-              const port = parseInt(portMatch[1], 10);
-              // PROTECTED PORT 7337: Workspace Tree internal daemon
-              if (port === 7337) continue;
+  // Dual-OS Port Scanning: Windows netstat + WSL ss
+  const [winStdout, wslPorts] = await Promise.all([
+    new Promise((res) => {
+      exec('netstat -ano -p tcp', { windowsHide: true }, (err, stdout) => {
+        res(!err && stdout ? stdout : '');
+      });
+    }),
+    scanWslListeningPorts()
+  ]);
 
-              const isProj = projectPorts.has(port);
-              const isDevPort = isProj ||
-                                (port >= 3000 && port <= 3010) ||
-                                (port >= 5170 && port <= 5185) ||
-                                (port >= 8000 && port <= 8090) ||
-                                (port >= 19000 && port <= 19010) ||
-                                port === 4000 || port === 4200;
+  const activePorts = [];
 
-              if (isDevPort && !activePorts.some(p => p.port === port)) {
-                activePorts.push({
-                  port,
-                  pid,
-                  address: localAddr,
-                  name: isProj ? `Port ${port} (Project)` : `Port ${port}`,
-                  protocol: 'TCP',
-                  isProjectPort: isProj,
-                  projectName: isProj && targetPath ? path.basename(targetPath) : null
-                });
-              }
-            }
+  // 1. Process Windows netstat output
+  if (winStdout) {
+    const lines = winStdout.split('\n');
+    for (const line of lines) {
+      if (!line.includes('LISTENING')) continue;
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 4) {
+        const localAddr = parts[1];
+        const pidStr = parts[parts.length - 1];
+        const pid = parseInt(pidStr, 10) || null;
+        const portMatch = localAddr.match(/:(\d+)$/);
+        if (portMatch) {
+          const port = parseInt(portMatch[1], 10);
+          // PROTECTED PORT 7337: Workspace Tree internal daemon
+          if (port === 7337) continue;
+
+          const isProj = projectPorts.has(port);
+          const isDevPort = isProj ||
+                            (port >= 3000 && port <= 3010) ||
+                            (port >= 5170 && port <= 5185) ||
+                            (port >= 8000 && port <= 8090) ||
+                            (port >= 19000 && port <= 19010) ||
+                            port === 4000 || port === 4200;
+
+          if (isDevPort && !activePorts.some(p => p.port === port)) {
+            activePorts.push({
+              port,
+              pid,
+              address: localAddr,
+              name: isProj ? `Port ${port} (Project)` : `Port ${port}`,
+              protocol: 'TCP',
+              isProjectPort: isProj,
+              projectName: isProj && targetPath ? path.basename(targetPath) : null,
+              os: 'windows'
+            });
           }
         }
       }
-      const projectPortCount = activePorts.filter(p => p.isProjectPort).length;
-      resolve({ success: true, ports: activePorts, projectPortCount, internalServers: getActiveServersSummary() });
-    });
-  });
+    }
+  }
+
+  // 2. Process WSL ss output
+  for (const wp of wslPorts) {
+    const port = wp.port;
+    const isProj = projectPorts.has(port);
+    const isDevPort = isProj ||
+                      (port >= 3000 && port <= 3010) ||
+                      (port >= 5170 && port <= 5185) ||
+                      (port >= 8000 && port <= 8090) ||
+                      (port >= 19000 && port <= 19010) ||
+                      port === 4000 || port === 4200;
+
+    if (isDevPort && !activePorts.some(p => p.port === port)) {
+      activePorts.push({
+        port,
+        pid: wp.pid,
+        address: wp.address,
+        name: isProj ? `Port ${port} (Project)` : (wp.procName && wp.procName !== 'MainThread' ? `Port ${port} (${wp.procName})` : `Port ${port} [WSL]`),
+        protocol: 'TCP',
+        isProjectPort: isProj,
+        projectName: isProj && targetPath ? path.basename(targetPath) : null,
+        os: 'wsl'
+      });
+    }
+  }
+
+  const projectPortCount = activePorts.filter(p => p.isProjectPort).length;
+  return { success: true, ports: activePorts, projectPortCount, internalServers: getActiveServersSummary() };
 }
 
-async function killPortProcess(targetPort, targetPid = null) {
+async function killPortProcess(targetPort, targetPid = null, osHint = null) {
   return new Promise((resolve) => {
     const portNum = parseInt(targetPort, 10);
     if (!portNum) return resolve({ success: false, error: 'Valid port required' });
@@ -1406,6 +1505,17 @@ async function killPortProcess(targetPort, targetPid = null) {
         success: false,
         error: "Port 7337 is Workspace Tree's internal daemon port and is protected. To quit Workspace Tree, use Settings or exit the application."
       });
+    }
+
+    if (osHint === 'wsl') {
+      let cmd = `wsl.exe -d Ubuntu sh -c "fuser -k ${portNum}/tcp 2>/dev/null"`;
+      if (targetPid) {
+        cmd = `wsl.exe -d Ubuntu sh -c "kill -9 ${targetPid} 2>/dev/null; fuser -k ${portNum}/tcp 2>/dev/null"`;
+      }
+      exec(cmd, { windowsHide: true }, () => {
+        resolve({ success: true, message: `Terminated WSL process on port ${portNum}` });
+      });
+      return;
     }
 
     if (targetPid) {
@@ -1421,23 +1531,22 @@ async function killPortProcess(targetPort, targetPid = null) {
 
 function killPortViaNetstat(portNum, resolve) {
   exec('netstat -ano -p tcp', { windowsHide: true }, (err, stdout) => {
-    if (err || !stdout) return resolve({ success: false, error: 'Failed to inspect ports' });
-    const lines = stdout.split('\n');
-    let killed = false;
-    for (const line of lines) {
-      if (line.includes(`:${portNum} `) && line.includes('LISTENING')) {
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && pid !== '0') {
-          try {
-            exec(`taskkill /F /PID ${pid} /T`, { windowsHide: true });
-            killed = true;
-          } catch {}
+    if (!err && stdout) {
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        if (line.includes(`:${portNum} `) && line.includes('LISTENING')) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && pid !== '0') {
+            try {
+              exec(`taskkill /F /PID ${pid} /T`, { windowsHide: true });
+            } catch {}
+          }
         }
       }
     }
     try {
-      exec(`wsl.exe -d Ubuntu fuser -k ${portNum}/tcp`, { windowsHide: true });
+      exec(`wsl.exe -d Ubuntu sh -c "fuser -k ${portNum}/tcp 2>/dev/null"`, { windowsHide: true });
     } catch {}
 
     resolve({ success: true, message: `Attempted to stop server on port ${portNum}` });
@@ -1827,8 +1936,8 @@ const server = http.createServer(async (req, res) => {
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
-        const { port, pid } = JSON.parse(body || '{}');
-        const result = await killPortProcess(port, pid);
+        const { port, pid, os } = JSON.parse(body || '{}');
+        const result = await killPortProcess(port, pid, os);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (err) {

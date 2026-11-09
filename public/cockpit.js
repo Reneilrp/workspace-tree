@@ -436,18 +436,22 @@
       const pidStr = p.pid ? String(p.pid) : '—';
       const nameStr = p.name || `Port ${p.port}`;
       const isProj = Boolean(p.isProjectPort);
+      const isWsl = p.os === 'wsl';
       const badgeHtml = isProj
         ? `<span class="type-pill" style="background:#e0f2fe;color:#0369a1;margin-left:6px;font-size:10px;">Project</span>`
         : '';
+      const osBadge = isWsl
+        ? `<span class="type-pill" style="background:#fef3c7;color:#b45309;margin-left:5px;font-size:10px;">Ubuntu WSL</span>`
+        : `<span class="type-pill" style="background:#f1f5f9;color:#475569;margin-left:5px;font-size:10px;">Windows</span>`;
       return `
         <tr>
-          <td><strong>:${p.port}</strong>${badgeHtml}</td>
+          <td><strong>:${p.port}</strong>${badgeHtml}${osBadge}</td>
           <td><span class="type-pill">${p.protocol || 'TCP'}</span></td>
           <td><code>${pidStr}</code></td>
           <td>${nameStr}</td>
           <td><span class="env-status-pill matched">Listening</span></td>
           <td>
-            <button class="pill-btn danger" onclick="window.killPortItem(${p.port}, ${p.pid || 'null'})">
+            <button class="pill-btn danger" onclick="window.killPortItem(${p.port}, ${p.pid || 'null'}, '${p.os || 'windows'}')">
               Kill Process
             </button>
           </td>
@@ -472,7 +476,7 @@
     });
   }
 
-  window.killPortItem = async function (port, pid) {
+  window.killPortItem = async function (port, pid, osHint = 'windows') {
     if (port === 7337) {
       alert("Port 7337 is Workspace Tree's internal daemon port and is protected.\nTo quit Workspace Tree, use Settings or exit the application.");
       return;
@@ -482,7 +486,7 @@
       const res = await fetch('/api/kill-port', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port, pid })
+        body: JSON.stringify({ port, pid, os: osHint })
       });
       const data = await res.json();
       if (data.success) {
